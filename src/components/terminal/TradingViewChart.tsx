@@ -34,8 +34,11 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Initialize Lightweight Chart
+    // Initialize Lightweight Chart with explicit initial dimensions to avoid 0×0 canvas
+    // during Next.js streaming hydration where flex dimensions resolve asynchronously.
     const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: chartContainerRef.current.clientHeight,
       layout: {
         background: { type: ColorType.Solid, color: "#0B0E14" },
         textColor: "#7B849B",
@@ -99,6 +102,10 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       const { width, height } = entries[0].contentRect;
       if (width > 0 && height > 0) {
         chartRef.current.applyOptions({ width, height });
+        // Redraw all loaded data at the new canvas dimensions.
+        // Required when candle data arrives before the first ResizeObserver callback
+        // (race condition during streaming hydration on Vercel production).
+        chartRef.current.timeScale().fitContent();
       }
     });
 
