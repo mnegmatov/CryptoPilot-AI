@@ -1,0 +1,19 @@
+{
+  "pages": {
+    "/api/market/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/market/route.js"
+    ],
+    "/api/paper/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/paper/route.js"
+    ],
+    "/api/signal-model-d/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/signal-model-d/route.js"
+    ]
+  }
+}

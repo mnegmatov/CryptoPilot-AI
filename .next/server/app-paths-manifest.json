@@ -1,0 +1,5 @@
+{
+  "/api/market/route": "app/api/market/route.js",
+  "/api/paper/route": "app/api/paper/route.js",
+  "/api/signal-model-d/route": "app/api/signal-model-d/route.js"
+}
