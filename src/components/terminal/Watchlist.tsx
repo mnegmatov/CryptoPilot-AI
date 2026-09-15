@@ -13,6 +13,7 @@ interface WatchlistProps {
   isStale?: boolean;
   lastUpdated?: number | null;
   onRetry?: () => void;
+  onCloseMobileDrawer?: () => void;
 }
 
 export const Watchlist: React.FC<WatchlistProps> = ({
@@ -24,9 +25,17 @@ export const Watchlist: React.FC<WatchlistProps> = ({
   isStale,
   lastUpdated,
   onRetry,
+  onCloseMobileDrawer,
 }) => {
+  const handleSelect = (symbol: string) => {
+    onSelectSymbol(symbol);
+    if (onCloseMobileDrawer) {
+      onCloseMobileDrawer();
+    }
+  };
+
   return (
-    <div className="w-full lg:w-64 bg-[#0E131F] lg:border-r border-[#1E2638] flex flex-col h-full lg:h-[calc(100vh-4rem)]">
+    <div className="w-full lg:w-[260px] shrink-0 bg-[#0E131F] lg:border-r border-[#1E2638] flex flex-col h-full lg:h-[calc(100vh-4rem)]">
       <div className="p-3 border-b border-[#1E2638] flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wider text-[#7B849B]">
           Список наблюдения
@@ -107,7 +116,7 @@ export const Watchlist: React.FC<WatchlistProps> = ({
               return (
                 <button
                   key={asset.symbol}
-                  onClick={() => onSelectSymbol(asset.symbol)}
+                  onClick={() => handleSelect(asset.symbol)}
                   className={`w-full text-left p-3.5 min-h-[48px] transition-colors flex items-center justify-between group ${
                     isSelected
                       ? "bg-[#141A29] border-l-2 border-sky-500"

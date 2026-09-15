@@ -51,3 +51,20 @@ body {
 .animate-glow {
   animation: glow-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Terminal workspace layout utilities */
+.terminal-panel-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.touch-pan-y {
+  touch-action: pan-y;
+}
+
+/* Safe viewport height fallback for mobile browsers */
+.h-terminal-screen {
+  height: calc(100vh - 4rem);
+  height: calc(100dvh - 4rem);
+}

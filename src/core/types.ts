@@ -241,3 +241,13 @@ export interface StaleQuoteState {
   lastUpdated?: number;
   message?: string;
 }
+
+export interface TerminalWorkspaceState {
+  selectedSymbol: string;
+  timeframe: Timeframe;
+  mobileSheetState: "COLLAPSED" | "EXPANDED";
+  isMobileWatchlistOpen: boolean;
+  isCommandPaletteOpen: boolean;
+  isCalculatorModalOpen: boolean;
+  activeTab: "terminal" | "backtest" | "paper";
+}

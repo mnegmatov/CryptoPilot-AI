@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, Maximize2, RefreshCw } from "lucide-react";
 import { ColorType, createChart, IChartApi, ISeriesApi, LineStyle } from "lightweight-charts";
 import { Candle, Timeframe, TradingSignal } from "@/core/types";
 
@@ -14,6 +14,7 @@ interface TradingViewChartProps {
   loading: boolean;
   error?: string | null;
   onRetry?: () => void;
+  onOpenMobileWatchlist?: () => void;
 }
 
 export const TradingViewChart: React.FC<TradingViewChartProps> = ({
@@ -25,6 +26,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   loading,
   error,
   onRetry,
+  onOpenMobileWatchlist,
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -202,49 +204,96 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   }, [candles, signal]);
 
   const timeframes: Timeframe[] = ["15m", "1h", "4h", "1d"];
+  const timeframeHotkeys: Record<Timeframe, string> = {
+    "15m": "1",
+    "1h": "2",
+    "4h": "3",
+    "1d": "4",
+  };
+
+  const latestCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+  const currentPrice = signal?.currentPrice ?? latestCandle?.close ?? null;
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0B0E14] lg:border-r border-[#1E2638]">
       {/* Chart Control Bar */}
       <div className="h-12 border-b border-[#1E2638] px-3 sm:px-4 flex items-center justify-between">
         <div className="flex items-center space-x-2 sm:space-x-3">
-          <span className="font-bold text-sm text-white">
-            {symbol.replace("USDT", "")}/USDT
-          </span>
-          <span className="hidden sm:inline text-xs text-[#7B849B]">Свечной график</span>
+          {onOpenMobileWatchlist ? (
+            <button
+              onClick={onOpenMobileWatchlist}
+              className="lg:pointer-events-none flex items-center space-x-1.5 font-bold text-sm text-white hover:text-sky-400 transition-colors"
+              title="Выбрать другую пару"
+            >
+              <span>{symbol.replace("USDT", "")}/USDT</span>
+              <span className="lg:hidden text-xs text-[#7B849B]">▼</span>
+            </button>
+          ) : (
+            <span className="font-bold text-sm text-white">
+              {symbol.replace("USDT", "")}/USDT
+            </span>
+          )}
 
-          {/* Timeframe Selector with touch targets */}
+          {/* Live Price Badge */}
+          {currentPrice !== null && (
+            <div className="hidden sm:flex items-center px-2 py-0.5 rounded bg-[#141A29] border border-[#1E2638] text-xs font-mono font-medium text-white">
+              <span className="text-[#7B849B] mr-0.5">$</span>
+              <span>
+                {currentPrice > 1
+                  ? currentPrice.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  : currentPrice.toFixed(4)}
+              </span>
+            </div>
+          )}
+
+          {/* Timeframe Selector with hotkey indicators */}
           <div className="flex bg-[#141A29] p-0.5 rounded border border-[#1E2638] ml-1 sm:ml-2">
             {timeframes.map((tf) => (
               <button
                 key={tf}
                 onClick={() => onTimeframeChange(tf)}
-                className={`px-2.5 py-1 min-h-[32px] sm:min-h-[28px] text-xs font-mono font-medium rounded transition-colors ${
+                title={`Таймфрейм ${tf.toUpperCase()} [${timeframeHotkeys[tf]}]`}
+                className={`px-2 sm:px-2.5 py-1 min-h-[32px] sm:min-h-[28px] text-xs font-mono font-medium rounded transition-colors flex items-center space-x-1 ${
                   timeframe === tf
-                    ? "bg-sky-500 text-white shadow-sm"
+                    ? "bg-sky-500 text-white shadow-sm font-semibold"
                     : "text-[#7B849B] hover:text-white"
                 }`}
               >
-                {tf.toUpperCase()}
+                <span>{tf.toUpperCase()}</span>
+                <span className="hidden xl:inline text-[9px] opacity-60">[{timeframeHotkeys[tf]}]</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="hidden sm:flex items-center space-x-3 text-xs font-mono">
-          <div className="flex items-center space-x-1">
-            <span className="h-2 w-2 rounded-full bg-sky-400" />
-            <span className="text-[#7B849B]">Вход</span>
+        {/* Legend & Fit Content Trigger */}
+        <div className="flex items-center space-x-3 text-xs font-mono">
+          <div className="hidden sm:flex items-center space-x-3">
+            <div className="flex items-center space-x-1">
+              <span className="h-2 w-2 rounded-full bg-sky-400" />
+              <span className="text-[#7B849B]">Вход</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <span className="h-2 w-2 rounded-full bg-rose-500" />
+              <span className="text-[#7B849B]">Стоп</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="text-[#7B849B]">ТП</span>
+            </div>
           </div>
-          <div className="flex items-center space-x-1">
-            <span className="h-2 w-2 rounded-full bg-rose-500" />
-            <span className="text-[#7B849B]">Стоп</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            <span className="text-[#7B849B]">ТП</span>
-          </div>
+
+          {/* Fit Content Button */}
+          <button
+            onClick={() => chartRef.current?.timeScale().fitContent()}
+            title="Масштабировать график по размеру"
+            className="p-1.5 hover:bg-[#141A29] rounded text-[#7B849B] hover:text-white transition-colors border border-transparent hover:border-[#1E2638]"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 

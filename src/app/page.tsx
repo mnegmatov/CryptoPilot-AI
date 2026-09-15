@@ -34,6 +34,39 @@ export default function TerminalPage() {
   const [signalError, setSignalError] = useState<string | null>(null);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMobileWatchlistOpen, setIsMobileWatchlistOpen] = useState(false);
+  const [isMobileSheetExpanded, setIsMobileSheetExpanded] = useState(false);
+
+  // Global Keyboard Shortcuts (1-4 for timeframe, Escape to close overlays)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || "").toLowerCase();
+      const isInputActive =
+        activeTag === "input" || activeTag === "textarea" || activeTag === "select";
+
+      if (e.key === "Escape") {
+        setIsSearchOpen(false);
+        setIsMobileWatchlistOpen(false);
+        setIsMobileSheetExpanded(false);
+        return;
+      }
+
+      if (isInputActive) return;
+
+      if (e.key === "1") {
+        setTimeframe("15m");
+      } else if (e.key === "2") {
+        setTimeframe("1h");
+      } else if (e.key === "3") {
+        setTimeframe("4h");
+      } else if (e.key === "4") {
+        setTimeframe("1d");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // 1. Fetch Watchlist & Market Context
   const fetchMarketOverview = async () => {
@@ -269,12 +302,12 @@ export default function TerminalPage() {
             </div>
 
             {/* Terminal Main Workspace: 3-column on >= 1024px, single active section on < 1024px */}
-            <div className="flex-1 flex flex-col lg:flex-row w-full lg:h-[calc(100vh-4rem)] overflow-hidden">
+            <div className="flex-1 flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden">
               {/* Left Watchlist */}
               <div
                 className={`h-full ${
                   mobileSection === "watchlist" ? "flex flex-col flex-1" : "hidden"
-                } lg:flex lg:flex-initial shrink-0`}
+                } lg:flex lg:w-[260px] shrink-0`}
               >
                 <Watchlist
                   assets={watchlist}
@@ -285,10 +318,11 @@ export default function TerminalPage() {
                   lastUpdated={lastMarketUpdate}
                   error={watchlistError}
                   onRetry={fetchMarketOverview}
+                  onCloseMobileDrawer={() => setIsMobileWatchlistOpen(false)}
                 />
               </div>
 
-              {/* Center 60fps Candlestick Chart */}
+              {/* Center Candlestick Chart */}
               <div
                 className={`h-full ${
                   mobileSection === "chart" ? "flex flex-col flex-1" : "hidden"
@@ -303,6 +337,7 @@ export default function TerminalPage() {
                   loading={loadingCandles}
                   error={candlesError}
                   onRetry={() => fetchCandles(selectedSymbol, timeframe)}
+                  onOpenMobileWatchlist={() => setIsMobileWatchlistOpen(true)}
                 />
               </div>
 
@@ -310,7 +345,7 @@ export default function TerminalPage() {
               <div
                 className={`h-full ${
                   mobileSection === "signal" ? "flex flex-col flex-1" : "hidden"
-                } lg:flex lg:flex-initial shrink-0`}
+                } lg:flex lg:w-[420px] shrink-0`}
               >
                 <SignalDossier
                   signal={signal}
@@ -318,6 +353,8 @@ export default function TerminalPage() {
                   error={signalError}
                   onRetry={() => fetchSignal(selectedSymbol)}
                   onDeployPaperTrade={handleDeployPaperTrade}
+                  isExpanded={isMobileSheetExpanded}
+                  onToggleExpand={() => setIsMobileSheetExpanded((prev) => !prev)}
                 />
               </div>
             </div>

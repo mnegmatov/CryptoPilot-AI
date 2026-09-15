@@ -29,6 +29,9 @@ interface SignalDossierProps {
   error?: string | null;
   onRetry?: () => void;
   onDeployPaperTrade: (riskPct: number, orderType: "MARKET" | "LIMIT") => void;
+  isMobileSheet?: boolean;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 export const SignalDossier: React.FC<SignalDossierProps> = ({
@@ -37,12 +40,15 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
   error,
   onRetry,
   onDeployPaperTrade,
+  isMobileSheet,
+  isExpanded,
+  onToggleExpand,
 }) => {
   const [showCalculator, setShowCalculator] = useState(false);
 
   if (loading) {
     return (
-      <div className="w-full lg:w-[460px] bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-4 h-full lg:h-[calc(100vh-4rem)]">
+      <div className="w-full lg:w-[420px] shrink-0 bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-4 h-full lg:h-[calc(100vh-4rem)]">
         <div className="h-8 w-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
         <div className="text-center">
           <p className="text-xs font-mono text-sky-400 font-medium">
@@ -58,7 +64,7 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
 
   if (error && !signal) {
     return (
-      <div className="w-full lg:w-[460px] bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-4 h-full lg:h-[calc(100vh-4rem)] text-center">
+      <div className="w-full lg:w-[420px] shrink-0 bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-4 h-full lg:h-[calc(100vh-4rem)] text-center">
         <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
           <AlertTriangle className="h-6 w-6 text-amber-400" />
         </div>
@@ -81,7 +87,7 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
 
   if (!signal) {
     return (
-      <div className="w-full lg:w-[460px] bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-3 h-full lg:h-[calc(100vh-4rem)] text-center">
+      <div className="w-full lg:w-[420px] shrink-0 bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-3 h-full lg:h-[calc(100vh-4rem)] text-center">
         <div className="text-xs text-[#7B849B]">Выберите торговую пару для расчёта сигнала</div>
       </div>
     );
@@ -124,8 +130,8 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
       : "СЕТАП: ИЗБЕГАТЬ";
 
   return (
-    <div className="w-full lg:w-[460px] bg-[#0E131F] lg:border-l border-[#1E2638] flex flex-col h-full lg:h-[calc(100vh-4rem)] overflow-y-auto">
-      {/* Setup Top Header */}
+    <div className="w-full lg:w-[420px] shrink-0 bg-[#0E131F] lg:border-l border-[#1E2638] flex flex-col h-full lg:h-[calc(100vh-4rem)] overflow-y-auto">
+      {/* Tier 1: Header / Stance & Confluence */}
       <div className="p-5 border-b border-[#1E2638] space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -177,33 +183,9 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
             <p className="text-[11px] font-mono text-[#7B849B]">Текущая рыночная цена</p>
           </div>
         </div>
-
-        {/* Quant Telemetry Badges (ADX & Liquidity) */}
-        <div className="flex flex-wrap gap-2 pt-1">
-          <div className="flex items-center space-x-1.5 bg-[#141A29] px-2 py-1 rounded text-[11px] font-mono border border-[#1E2638]">
-            <Gauge className="h-3 w-3 text-sky-400" />
-            <span className="text-[#7B849B]">ADX(14):</span>
-            <span className={signal.technicalSummary.adx14 >= 20 ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
-              {signal.technicalSummary.adx14}
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-1.5 bg-[#141A29] px-2 py-1 rounded text-[11px] font-mono border border-[#1E2638]">
-            <Activity className="h-3 w-3 text-indigo-400" />
-            <span className="text-[#7B849B]">RSI:</span>
-            <span className="text-white">{signal.technicalSummary.rsi14}</span>
-          </div>
-
-          {signal.marketStructure.liquiditySweep && (
-            <div className="flex items-center space-x-1.5 bg-amber-400/10 text-amber-300 px-2 py-1 rounded text-[10px] font-mono border border-amber-400/20">
-              <Waves className="h-3 w-3" />
-              <span>{signal.marketStructure.liquiditySweep.type.replace(/_/g, " ")}</span>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* Trade Execution Levels Matrix */}
+      {/* Tier 2: Trade Execution Box */}
       <div className="p-5 border-b border-[#1E2638] space-y-4">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-[#7B849B] flex items-center space-x-1.5">
           <Target className="h-3.5 w-3.5 text-sky-400" />
@@ -285,26 +267,72 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
         </div>
       </div>
 
-      {/* Invalidation Conditions */}
-      <div className="p-5 border-b border-[#1E2638] space-y-2.5">
+      {/* Tier 3: Telemetry & Invalidation */}
+      <div className="p-5 border-b border-[#1E2638] space-y-3.5">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-[#7B849B] flex items-center space-x-1.5">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-          <span>Условия отмены сетапа</span>
+          <Activity className="h-3.5 w-3.5 text-sky-400" />
+          <span>Квантовая телеметрия и условия отмены</span>
         </h3>
-        <ul className="space-y-1.5">
-          {signal.invalidationConditions.map((cond, idx) => (
-            <li
-              key={idx}
-              className="text-xs text-[#E2E8F0] flex items-start space-x-2 bg-[#141A29]/60 p-2 rounded border border-[#1E2638]"
-            >
-              <span className="text-rose-400 font-bold mt-0.5">•</span>
-              <span className="leading-relaxed">{cond}</span>
-            </li>
-          ))}
-        </ul>
+
+        {/* Quant Telemetry Badges */}
+        <div className="flex flex-wrap gap-2">
+          <div
+            className={`flex items-center space-x-1.5 px-2 py-1 rounded text-[11px] font-mono border ${
+              signal.technicalSummary.adx14 >= 20
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+            }`}
+            title="ADX >= 20 подтверждает наличие трендового режима"
+          >
+            <Gauge className="h-3 w-3" />
+            <span className="text-[#7B849B]">ADX(14):</span>
+            <span className="font-bold">{signal.technicalSummary.adx14}</span>
+          </div>
+
+          <div className="flex items-center space-x-1.5 bg-[#141A29] px-2 py-1 rounded text-[11px] font-mono border border-[#1E2638]">
+            <Activity className="h-3 w-3 text-indigo-400" />
+            <span className="text-[#7B849B]">RSI(14):</span>
+            <span className="text-white">{signal.technicalSummary.rsi14}</span>
+          </div>
+
+          {signal.technicalSummary.ema200 > 0 && (
+            <div className="flex items-center space-x-1.5 bg-[#141A29] px-2 py-1 rounded text-[11px] font-mono border border-[#1E2638]">
+              <span className="text-[#7B849B]">EMA200:</span>
+              <span className="text-white">
+                ${signal.technicalSummary.ema200 > 1 ? signal.technicalSummary.ema200.toLocaleString(undefined, { maximumFractionDigits: 2 }) : signal.technicalSummary.ema200.toFixed(4)}
+              </span>
+            </div>
+          )}
+
+          {signal.marketStructure.liquiditySweep && (
+            <div className="flex items-center space-x-1.5 bg-amber-400/10 text-amber-300 px-2 py-1 rounded text-[10px] font-mono border border-amber-400/20">
+              <Waves className="h-3 w-3" />
+              <span>{signal.marketStructure.liquiditySweep.type.replace(/_/g, " ")}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Invalidation Conditions */}
+        <div className="space-y-1.5 pt-1">
+          <div className="text-[11px] font-semibold text-[#7B849B] flex items-center space-x-1">
+            <AlertTriangle className="h-3 w-3 text-amber-400" />
+            <span>Критерии отмены сетапа:</span>
+          </div>
+          <ul className="space-y-1.5">
+            {signal.invalidationConditions.map((cond, idx) => (
+              <li
+                key={idx}
+                className="text-xs text-[#E2E8F0] flex items-start space-x-2 bg-[#141A29]/60 p-2 rounded border border-[#1E2638]"
+              >
+                <span className="text-rose-400 font-bold mt-0.5">•</span>
+                <span className="leading-relaxed">{cond}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
-      {/* AI Analyst Institutional Commentary */}
+      {/* Tier 4: AI Institutional Thesis & Execution Action */}
       <div className="p-5 space-y-3.5">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-[#7B849B] flex items-center space-x-1.5">
