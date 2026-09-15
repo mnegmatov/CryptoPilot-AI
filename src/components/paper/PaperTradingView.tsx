@@ -351,7 +351,7 @@ export const PaperTradingView: React.FC = () => {
                       >
                         {signal?.stance || "WAIT"}
                       </strong>{" "}
-                      ({signal?.confidenceScore || 0}% уверенность)
+                      (Signal Score: {signal?.confidenceScore || 0}/100)
                     </span>
                   )}
                 </span>

@@ -71,11 +71,11 @@ export interface MarketStructure {
 }
 
 export interface MarketContextData {
-  fearGreedIndex: number;
-  fearGreedSentiment: string;
-  fundingRate: number; // e.g. 0.0001 (0.01%)
+  fearGreedIndex: number | null;
+  fearGreedSentiment: string | null;
+  fundingRate: number | null; // e.g. 0.0001 (0.01%) or null if unavailable
   openInterestEstimated?: number;
-  btcDominance?: number;
+  btcDominance?: number | null;
   marketRegime: "TRENDING_BULL" | "TRENDING_BEAR" | "CHOPPY_RANGE" | "HIGH_VOLATILITY_EXPANSION";
 }
 

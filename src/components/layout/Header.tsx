@@ -47,14 +47,18 @@ export const Header: React.FC<HeaderProps> = ({
               <Activity className="h-3.5 w-3.5 text-amber-400" />
               <span className="text-[#7B849B]">Страх и жадность:</span>
               <span className="font-semibold text-white">
-                {context.fearGreedIndex} ({context.fearGreedSentiment})
+                {context.fearGreedIndex !== null
+                  ? `${context.fearGreedIndex} (${context.fearGreedSentiment || "—"})`
+                  : "—"}
               </span>
             </div>
             <div className="flex items-center space-x-2 bg-[#141A29] px-2.5 py-1 rounded border border-[#1E2638]">
               <BarChart3 className="h-3.5 w-3.5 text-indigo-400" />
               <span className="text-[#7B849B]">Фандинг:</span>
               <span className="font-mono text-emerald-400">
-                {(context.fundingRate * 100).toFixed(4)}%
+                {context.fundingRate !== null
+                  ? `${(context.fundingRate * 100).toFixed(4)}%`
+                  : "—"}
               </span>
             </div>
             <div className="flex items-center space-x-2 bg-[#141A29] px-2.5 py-1 rounded border border-[#1E2638]">

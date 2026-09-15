@@ -185,14 +185,15 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         title: "СТОП-ЛОСС",
       });
 
+      const isModelD = signal.id.includes("model_d");
       signal.takeProfitTargets.forEach((tp) => {
         candleSeriesRef.current?.createPriceLine({
           price: tp.price,
-          color: "#10B981",
+          color: isModelD ? "#38BDF8" : "#10B981",
           lineWidth: 1,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
-          title: `ТП${tp.level} (${tp.rewardRisk}R)`,
+          title: isModelD ? `Рубеж +${tp.rewardRisk}R (Milestone)` : `ТП${tp.level} (${tp.rewardRisk}R)`,
         });
       });
 

@@ -678,13 +678,13 @@ function generateV1TradingSignal(
   }
 
   // 6. Market Context & Funding Rate
-  if (context.fundingRate > 0.00035) {
+  if (context.fundingRate !== null && context.fundingRate > 0.00035) {
     // High long funding -> longs pay shorts -> favor shorts, penalize longs
     bearConfluence += 12;
     bullConfluence -= 15;
     bearReasons.push("Elevated funding rate creates long squeeze vulnerability");
     invalidationConditions.push("Elevated long funding rate increases carry cost for longs");
-  } else if (context.fundingRate < -0.00015) {
+  } else if (context.fundingRate !== null && context.fundingRate < -0.00015) {
     // Negative funding -> shorts pay longs -> favor longs, penalize shorts
     bullConfluence += 12;
     bearConfluence -= 15;
@@ -1114,9 +1114,9 @@ export function generateModelDSignalFrom4hCandles(
   const structure = analyzeMarketStructure(candles4h);
 
   const defaultContext: MarketContextData = context || {
-    fearGreedIndex: 50,
-    fearGreedSentiment: "Neutral",
-    fundingRate: 0.0001,
+    fearGreedIndex: null,
+    fearGreedSentiment: null,
+    fundingRate: null,
     marketRegime: indicators.currentPrice > indicators.ema200 ? "TRENDING_BULL" : "TRENDING_BEAR",
   };
 

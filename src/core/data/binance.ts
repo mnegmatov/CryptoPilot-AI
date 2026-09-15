@@ -234,9 +234,10 @@ export async function fetchBinanceBatchTickers(symbols: string[]): Promise<
 }
 
 /**
- * Fetches the latest perpetual funding rate from Binance Futures public API
+ * Fetches the latest perpetual funding rate from Binance Futures public API.
+ * Returns null if unavailable or if the asset has no futures market.
  */
-export async function fetchBinanceFundingRate(symbol: string): Promise<number> {
+export async function fetchBinanceFundingRate(symbol: string): Promise<number | null> {
   try {
     const formattedSymbol = formatBinanceSymbol(symbol);
     const url = `${BINANCE_FUTURES_URL}/fapi/v1/fundingRate?symbol=${formattedSymbol}&limit=1`;
@@ -250,15 +251,15 @@ export async function fetchBinanceFundingRate(symbol: string): Promise<number> {
     });
     clearTimeout(timeoutId);
 
-    if (!response.ok) return 0.0001; // Neutral baseline (0.01%)
+    if (!response.ok) return null;
 
     const data = await response.json();
     if (Array.isArray(data) && data.length > 0) {
-      return parseFloat(data[0].fundingRate);
+      const parsed = parseFloat(data[0].fundingRate);
+      return Number.isFinite(parsed) ? parsed : null;
     }
-    return 0.0001;
+    return null;
   } catch (err) {
-    // Graceful fallback for symbols not on futures
-    return 0.0001;
+    return null;
   }
 }

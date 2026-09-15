@@ -103,11 +103,11 @@ export async function getMarketContext(symbol: string): Promise<MarketContextDat
   ]);
 
   let regime: MarketContextData["marketRegime"] = "CHOPPY_RANGE";
-  if (fundingRate > 0.0003) {
+  if (fundingRate !== null && fundingRate > 0.0003) {
     regime = "HIGH_VOLATILITY_EXPANSION"; // Aggressive long leverage
-  } else if (fng.score > 65) {
+  } else if (fng.score !== null && fng.score > 65) {
     regime = "TRENDING_BULL";
-  } else if (fng.score < 35) {
+  } else if (fng.score !== null && fng.score < 35) {
     regime = "TRENDING_BEAR";
   }
 
@@ -115,7 +115,6 @@ export async function getMarketContext(symbol: string): Promise<MarketContextDat
     fearGreedIndex: fng.score,
     fearGreedSentiment: fng.sentiment,
     fundingRate: fundingRate,
-    btcDominance: 57.8, // Institutional benchmark
     marketRegime: regime,
   };
 }

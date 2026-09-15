@@ -113,6 +113,7 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
 
   const currentStance = stanceColors[signal.stance] || stanceColors.WAIT;
   const isShort = signal.stance === "SHORT" || signal.type === "SHORT";
+  const isModelD = signal.id.includes("model_d");
   const stanceLabel =
     signal.stance === "BUY"
       ? "СЕТАП: ПОКУПКА"
@@ -138,9 +139,12 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
             </span>
           </div>
 
-          {/* Confidence Score Pill */}
-          <div className="flex items-center space-x-2 bg-[#141A29] px-2.5 py-1 rounded-full border border-[#1E2638]">
-            <span className="text-[11px] text-[#7B849B]">Уверенность:</span>
+          {/* Signal Score Pill */}
+          <div
+            className="flex items-center space-x-2 bg-[#141A29] px-2.5 py-1 rounded-full border border-[#1E2638]"
+            title="Детерминированный конфлюенс-скор (0-100), не вероятность выигрыша"
+          >
+            <span className="text-[11px] text-[#7B849B]">Signal Score:</span>
             <span
               className={`text-xs font-mono font-bold ${
                 signal.confidenceScore >= 70
@@ -150,7 +154,7 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
                   : "text-rose-400"
               }`}
             >
-              {signal.confidenceScore}%
+              {signal.confidenceScore}/100
             </span>
           </div>
         </div>
@@ -232,36 +236,52 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
           </div>
         </div>
 
-        {/* Take Profit Target Ladder with Rationale */}
-        <div className="bg-[#141A29] rounded-lg border border-[#1E2638] divide-y divide-[#1E2638]/70 overflow-hidden text-xs">
-          {signal.takeProfitTargets.map((tp) => (
-            <div key={tp.level} className="p-3 space-y-1">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className="font-mono text-[11px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded font-semibold">
-                    ТП{tp.level}
-                  </span>
-                  <span className="text-white font-mono font-semibold">
-                    ${tp.price.toLocaleString()}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="font-mono font-bold text-emerald-400">
-                    +{tp.percentage}%
-                  </span>
-                  <span className="text-[10px] text-[#7B849B] ml-1.5 font-mono">
-                    ({tp.rewardRisk}R)
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-[#7B849B]">
-                <span>{tp.description}</span>
-                {tp.targetReason && (
-                  <span className="text-sky-400/80 italic">{tp.targetReason}</span>
-                )}
-              </div>
+        {/* Target Levels / Milestones */}
+        <div className="space-y-2">
+          {isModelD && (
+            <div className="px-2.5 py-1.5 rounded bg-sky-500/10 border border-sky-500/20 text-[11px] text-sky-300 flex items-start space-x-1.5">
+              <span className="font-semibold shrink-0">Model D:</span>
+              <span className="leading-tight">
+                Выход строго по структурному трейлинг-стопу (5 свечей). Рубежи +3R и +6R являются ориентирами (Milestones / R-multiples), а не фиксированными тейк-профитами.
+              </span>
             </div>
-          ))}
+          )}
+          <div className="bg-[#141A29] rounded-lg border border-[#1E2638] divide-y divide-[#1E2638]/70 overflow-hidden text-xs">
+            {signal.takeProfitTargets.map((tp) => (
+              <div key={tp.level} className="p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span
+                      className={`font-mono text-[11px] px-1.5 py-0.5 rounded font-semibold ${
+                        isModelD
+                          ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                          : "bg-emerald-500/10 text-emerald-400"
+                      }`}
+                    >
+                      {isModelD ? `Рубеж +${tp.rewardRisk}R (Milestone)` : `ТП${tp.level}`}
+                    </span>
+                    <span className="text-white font-mono font-semibold">
+                      ${tp.price.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className={`font-mono font-bold ${isModelD ? "text-sky-400" : "text-emerald-400"}`}>
+                      +{tp.percentage}%
+                    </span>
+                    <span className="text-[10px] text-[#7B849B] ml-1.5 font-mono">
+                      ({tp.rewardRisk}R)
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-[#7B849B]">
+                  <span>{tp.description}</span>
+                  {tp.targetReason && (
+                    <span className="text-sky-400/80 italic">{tp.targetReason}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -3,8 +3,8 @@
  * Completely free, no API key required.
  */
 export async function fetchFearAndGreedIndex(): Promise<{
-  score: number;
-  sentiment: string;
+  score: number | null;
+  sentiment: string | null;
   timestamp: number;
 }> {
   try {
@@ -14,20 +14,21 @@ export async function fetchFearAndGreedIndex(): Promise<{
     });
 
     if (!res.ok) {
-      return { score: 50, sentiment: "Neutral", timestamp: Date.now() };
+      return { score: null, sentiment: null, timestamp: Date.now() };
     }
 
     const data = await res.json();
     if (data && data.data && data.data[0]) {
       const item = data.data[0];
+      const parsedScore = parseInt(item.value, 10);
       return {
-        score: parseInt(item.value, 10),
-        sentiment: item.value_classification || "Neutral",
+        score: Number.isFinite(parsedScore) ? parsedScore : null,
+        sentiment: item.value_classification || null,
         timestamp: parseInt(item.timestamp, 10) * 1000,
       };
     }
-    return { score: 50, sentiment: "Neutral", timestamp: Date.now() };
+    return { score: null, sentiment: null, timestamp: Date.now() };
   } catch (error) {
-    return { score: 50, sentiment: "Neutral", timestamp: Date.now() };
+    return { score: null, sentiment: null, timestamp: Date.now() };
   }
 }

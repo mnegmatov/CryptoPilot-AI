@@ -105,7 +105,7 @@ export function evaluateRiskCompliance(
     );
   }
 
-  if (signal.marketContext.fundingRate > 0.0003) {
+  if (signal.marketContext.fundingRate !== null && signal.marketContext.fundingRate > 0.0003) {
     warnings.push("Funding rate is elevated (>0.03%), increasing carry cost for longs");
   }
 
