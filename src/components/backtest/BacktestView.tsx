@@ -442,7 +442,7 @@ export const BacktestView: React.FC<BacktestViewProps> = ({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono">
+                <table className="w-full min-w-[850px] text-left text-xs font-mono">
                   <thead className="bg-[#0E131F] text-[#7B849B] border-b border-[#1E2638]">
                     <tr>
                       <th className="p-3">Инструмент</th>

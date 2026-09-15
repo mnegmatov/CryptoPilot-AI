@@ -14,6 +14,7 @@ import {
   Layers,
   Percent,
   Play,
+  RefreshCw,
   Shield,
   Sparkles,
   Target,
@@ -25,19 +26,23 @@ import { PositionCalculatorModal } from "./PositionCalculatorModal";
 interface SignalDossierProps {
   signal: TradingSignal | null;
   loading: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   onDeployPaperTrade: (riskPct: number, orderType: "MARKET" | "LIMIT") => void;
 }
 
 export const SignalDossier: React.FC<SignalDossierProps> = ({
   signal,
   loading,
+  error,
+  onRetry,
   onDeployPaperTrade,
 }) => {
   const [showCalculator, setShowCalculator] = useState(false);
 
-  if (loading || !signal) {
+  if (loading) {
     return (
-      <div className="w-full lg:w-[460px] bg-[#0E131F] border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-4 h-[calc(100vh-4rem)]">
+      <div className="w-full lg:w-[460px] bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-4 h-full lg:h-[calc(100vh-4rem)]">
         <div className="h-8 w-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
         <div className="text-center">
           <p className="text-xs font-mono text-sky-400 font-medium">
@@ -50,6 +55,38 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
       </div>
     );
   }
+
+  if (error && !signal) {
+    return (
+      <div className="w-full lg:w-[460px] bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-4 h-full lg:h-[calc(100vh-4rem)] text-center">
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <AlertTriangle className="h-6 w-6 text-amber-400" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-white">Не удалось рассчитать сигнал</p>
+          <p className="text-xs text-[#7B849B] max-w-xs leading-relaxed">{error}</p>
+        </div>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="mt-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center space-x-1.5"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            <span>Повторить анализ</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (!signal) {
+    return (
+      <div className="w-full lg:w-[460px] bg-[#0E131F] lg:border-l border-[#1E2638] p-6 flex flex-col items-center justify-center space-y-3 h-full lg:h-[calc(100vh-4rem)] text-center">
+        <div className="text-xs text-[#7B849B]">Выберите торговую пару для расчёта сигнала</div>
+      </div>
+    );
+  }
+
 
   const stanceColors: Record<string, { bg: string; pill: string; border: string }> = {
     BUY: {
@@ -86,7 +123,7 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
       : "СЕТАП: ИЗБЕГАТЬ";
 
   return (
-    <div className="w-full lg:w-[460px] bg-[#0E131F] border-l border-[#1E2638] flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
+    <div className="w-full lg:w-[460px] bg-[#0E131F] lg:border-l border-[#1E2638] flex flex-col h-full lg:h-[calc(100vh-4rem)] overflow-y-auto">
       {/* Setup Top Header */}
       <div className="p-5 border-b border-[#1E2638] space-y-3">
         <div className="flex items-center justify-between">

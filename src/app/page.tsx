@@ -16,16 +16,22 @@ export default function TerminalPage() {
   const [activeTab, setActiveTab] = useState<"terminal" | "backtest" | "paper">("terminal");
   const [selectedSymbol, setSelectedSymbol] = useState("BTCUSDT");
   const [timeframe, setTimeframe] = useState<Timeframe>("1h");
+  const [mobileSection, setMobileSection] = useState<"chart" | "watchlist" | "signal">("chart");
 
   const [watchlist, setWatchlist] = useState<WatchlistAsset[]>([]);
   const [marketContext, setMarketContext] = useState<MarketContextData | null>(null);
   const [loadingMarket, setLoadingMarket] = useState(true);
+  const [watchlistError, setWatchlistError] = useState<string | null>(null);
+  const [isWatchlistStale, setIsWatchlistStale] = useState(false);
+  const [lastMarketUpdate, setLastMarketUpdate] = useState<number | null>(null);
 
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loadingCandles, setLoadingCandles] = useState(true);
+  const [candlesError, setCandlesError] = useState<string | null>(null);
 
   const [signal, setSignal] = useState<TradingSignal | null>(null);
   const [loadingSignal, setLoadingSignal] = useState(true);
+  const [signalError, setSignalError] = useState<string | null>(null);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -34,12 +40,34 @@ export default function TerminalPage() {
     try {
       const res = await fetch("/api/market");
       const data = await res.json();
-      if (data.success) {
+      if (data.success && Array.isArray(data.watchlist) && data.watchlist.length > 0) {
         setWatchlist(data.watchlist);
-        setMarketContext(data.context);
+        if (data.context) {
+          setMarketContext(data.context);
+        }
+        setIsWatchlistStale(false);
+        setWatchlistError(null);
+        setLastMarketUpdate(Date.now());
+      } else {
+        const errorMsg = data.error || "Не удалось загрузить рыночные данные";
+        setWatchlistError(errorMsg);
+        setWatchlist((prev) => {
+          if (prev.length > 0) {
+            setIsWatchlistStale(true);
+          }
+          return prev;
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Market overview error:", err);
+      const errorMsg = err.message || "Ошибка подключения к рыночному шлюзу";
+      setWatchlistError(errorMsg);
+      setWatchlist((prev) => {
+        if (prev.length > 0) {
+          setIsWatchlistStale(true);
+        }
+        return prev;
+      });
     } finally {
       setLoadingMarket(false);
     }
@@ -54,28 +82,31 @@ export default function TerminalPage() {
   // 2. Fetch Candlesticks
   const fetchCandles = async (symbol: string, tf: Timeframe) => {
     setLoadingCandles(true);
+    setCandlesError(null);
     try {
       const res = await fetch(`/api/candles?symbol=${symbol}&timeframe=${tf}&limit=180`);
       const data = await res.json();
-      if (data.success && Array.isArray(data.candles)) {
+      if (data.success && Array.isArray(data.candles) && data.candles.length > 0) {
         setCandles(data.candles);
+        setCandlesError(null);
 
         // Update paper trading live prices
-        if (data.candles.length > 0) {
-          const latestPrice = data.candles[data.candles.length - 1].close;
-          fetch("/api/paper", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "UPDATE_PRICE",
-              symbol,
-              price: latestPrice,
-            }),
-          }).catch(() => {});
-        }
+        const latestPrice = data.candles[data.candles.length - 1].close;
+        fetch("/api/paper", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "UPDATE_PRICE",
+            symbol,
+            price: latestPrice,
+          }),
+        }).catch(() => {});
+      } else {
+        setCandlesError(data.error || "Не удалось загрузить свечные котировки");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Candles fetch error:", err);
+      setCandlesError(err.message || "Сетевая ошибка при получении свечей");
     } finally {
       setLoadingCandles(false);
     }
@@ -128,14 +159,19 @@ export default function TerminalPage() {
   // 3. Fetch Signal & AI Thesis
   const fetchSignal = async (symbol: string) => {
     setLoadingSignal(true);
+    setSignalError(null);
     try {
       const res = await fetch(`/api/signal?symbol=${symbol}`);
       const data = await res.json();
       if (data.success && data.signal) {
         setSignal(data.signal);
+        setSignalError(null);
+      } else {
+        setSignalError(data.error || "Не удалось рассчитать количественный сетап");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Signal fetch error:", err);
+      setSignalError(err.message || "Ошибка соединения с генератором сигналов");
     } finally {
       setLoadingSignal(false);
     }
@@ -145,6 +181,11 @@ export default function TerminalPage() {
     fetchCandles(selectedSymbol, timeframe);
     fetchSignal(selectedSymbol);
   }, [selectedSymbol, timeframe]);
+
+  const handleSelectSymbol = (symbol: string) => {
+    setSelectedSymbol(symbol);
+    setMobileSection("chart"); // Auto-switch to chart on mobile
+  };
 
   // Handle Deploying Paper Trade
   const handleDeployPaperTrade = async (riskPct: number, orderType: "MARKET" | "LIMIT") => {
@@ -187,33 +228,99 @@ export default function TerminalPage() {
       />
 
       {/* Main View Router */}
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden">
         {activeTab === "terminal" && (
-          <div className="flex-1 flex flex-col md:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden">
-            {/* Left Watchlist */}
-            <Watchlist
-              assets={watchlist}
-              selectedSymbol={selectedSymbol}
-              onSelectSymbol={(sym) => setSelectedSymbol(sym)}
-              loading={loadingMarket}
-            />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Mobile Navigation Segmented Switcher (Visible only < 1024px) */}
+            <div className="flex lg:hidden bg-[#0A0E17] border-b border-[#1E2638] p-2 gap-1.5 shrink-0 z-10">
+              <button
+                type="button"
+                onClick={() => setMobileSection("chart")}
+                className={`flex-1 py-2 px-3 min-h-[44px] rounded-lg text-xs font-semibold font-mono flex items-center justify-center transition-colors ${
+                  mobileSection === "chart"
+                    ? "bg-[#1E2638] text-sky-400 border border-sky-500/30 shadow-sm"
+                    : "text-[#7B849B] hover:text-[#E2E8F0] hover:bg-[#141A29]"
+                }`}
+              >
+                График
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileSection("watchlist")}
+                className={`flex-1 py-2 px-3 min-h-[44px] rounded-lg text-xs font-semibold font-mono flex items-center justify-center transition-colors ${
+                  mobileSection === "watchlist"
+                    ? "bg-[#1E2638] text-sky-400 border border-sky-500/30 shadow-sm"
+                    : "text-[#7B849B] hover:text-[#E2E8F0] hover:bg-[#141A29]"
+                }`}
+              >
+                Пары {watchlist.length > 0 ? `(${watchlist.length})` : ""}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileSection("signal")}
+                className={`flex-1 py-2 px-3 min-h-[44px] rounded-lg text-xs font-semibold font-mono flex items-center justify-center transition-colors ${
+                  mobileSection === "signal"
+                    ? "bg-[#1E2638] text-sky-400 border border-sky-500/30 shadow-sm"
+                    : "text-[#7B849B] hover:text-[#E2E8F0] hover:bg-[#141A29]"
+                }`}
+              >
+                Сигнал
+              </button>
+            </div>
 
-            {/* Center 60fps Candlestick Chart */}
-            <TradingViewChart
-              symbol={selectedSymbol}
-              timeframe={timeframe}
-              onTimeframeChange={(tf) => setTimeframe(tf)}
-              candles={candles}
-              signal={signal}
-              loading={loadingCandles}
-            />
+            {/* Terminal Main Workspace: 3-column on >= 1024px, single active section on < 1024px */}
+            <div className="flex-1 flex flex-col lg:flex-row w-full lg:h-[calc(100vh-4rem)] overflow-hidden">
+              {/* Left Watchlist */}
+              <div
+                className={`h-full ${
+                  mobileSection === "watchlist" ? "flex flex-col flex-1" : "hidden"
+                } lg:flex lg:flex-initial shrink-0`}
+              >
+                <Watchlist
+                  assets={watchlist}
+                  selectedSymbol={selectedSymbol}
+                  onSelectSymbol={handleSelectSymbol}
+                  loading={loadingMarket}
+                  isStale={isWatchlistStale}
+                  lastUpdated={lastMarketUpdate}
+                  error={watchlistError}
+                  onRetry={fetchMarketOverview}
+                />
+              </div>
 
-            {/* Right Signal Dossier & AI Analyst */}
-            <SignalDossier
-              signal={signal}
-              loading={loadingSignal}
-              onDeployPaperTrade={handleDeployPaperTrade}
-            />
+              {/* Center 60fps Candlestick Chart */}
+              <div
+                className={`h-full ${
+                  mobileSection === "chart" ? "flex flex-col flex-1" : "hidden"
+                } lg:flex lg:flex-1 min-w-0`}
+              >
+                <TradingViewChart
+                  symbol={selectedSymbol}
+                  timeframe={timeframe}
+                  onTimeframeChange={(tf) => setTimeframe(tf)}
+                  candles={candles}
+                  signal={signal}
+                  loading={loadingCandles}
+                  error={candlesError}
+                  onRetry={() => fetchCandles(selectedSymbol, timeframe)}
+                />
+              </div>
+
+              {/* Right Signal Dossier & AI Analyst */}
+              <div
+                className={`h-full ${
+                  mobileSection === "signal" ? "flex flex-col flex-1" : "hidden"
+                } lg:flex lg:flex-initial shrink-0`}
+              >
+                <SignalDossier
+                  signal={signal}
+                  loading={loadingSignal}
+                  error={signalError}
+                  onRetry={() => fetchSignal(selectedSymbol)}
+                  onDeployPaperTrade={handleDeployPaperTrade}
+                />
+              </div>
+            </div>
           </div>
         )}
 

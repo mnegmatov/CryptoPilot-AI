@@ -74,36 +74,24 @@ export async function getMarketCandles(
  * Fetches watchlist overview data across major crypto assets using single batch query
  */
 export async function getWatchlistOverview(): Promise<WatchlistAsset[]> {
-  try {
-    const symbols = DEFAULT_ASSETS.map((a) => a.symbol);
-    const batchTickers = await fetchBinanceBatchTickers(symbols);
-    const tickerMap = new Map(batchTickers.map((t) => [t.symbol, t]));
+  const symbols = DEFAULT_ASSETS.map((a) => a.symbol);
+  const batchTickers = await fetchBinanceBatchTickers(symbols);
+  const tickerMap = new Map(batchTickers.map((t) => [t.symbol, t]));
 
-    return DEFAULT_ASSETS.map((asset) => {
-      const ticker = tickerMap.get(asset.symbol);
-      return {
-        symbol: asset.symbol,
-        name: asset.name,
-        lastPrice: ticker ? ticker.lastPrice : 0,
-        change24h: ticker ? ticker.priceChangePercent : 0,
-        high24h: ticker ? ticker.highPrice : 0,
-        low24h: ticker ? ticker.lowPrice : 0,
-        volumeQuote: ticker ? ticker.quoteVolume : 0,
-      };
-    });
-  } catch (err) {
-    console.error("Batch ticker fetch error:", err);
-    return DEFAULT_ASSETS.map((asset) => ({
+  return DEFAULT_ASSETS.map((asset) => {
+    const ticker = tickerMap.get(asset.symbol);
+    return {
       symbol: asset.symbol,
       name: asset.name,
-      lastPrice: 0,
-      change24h: 0,
-      high24h: 0,
-      low24h: 0,
-      volumeQuote: 0,
-    }));
-  }
+      lastPrice: ticker ? ticker.lastPrice : 0,
+      change24h: ticker ? ticker.priceChangePercent : 0,
+      high24h: ticker ? ticker.highPrice : 0,
+      low24h: ticker ? ticker.lowPrice : 0,
+      volumeQuote: ticker ? ticker.quoteVolume : 0,
+    };
+  });
 }
+
 
 /**
  * Collects complete real-time market context

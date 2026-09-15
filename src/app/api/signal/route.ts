@@ -4,6 +4,7 @@ import { getMarketCandles, getMarketContext } from "@/core/data/market-feed";
 import { extractTechnicalIndicators } from "@/core/quant/indicators";
 import { analyzeMarketStructure } from "@/core/quant/structure";
 import { generateTradingSignal } from "@/core/signals/generator";
+import { ApiErrorResponse } from "@/core/types";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +32,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       signal,
+      timestamp: Date.now(),
     });
   } catch (error: any) {
     console.error(`Error generating signal for ${symbol}:`, error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to generate signal" },
-      { status: 500 }
-    );
+    const isTimeout = error.message?.toLowerCase().includes("timeout");
+    const errorPayload: ApiErrorResponse = {
+      success: false,
+      error: error.message || "Failed to generate signal",
+      code: isTimeout ? "UPSTREAM_TIMEOUT" : "UPSTREAM_UNAVAILABLE",
+      timestamp: Date.now(),
+    };
+
+    return NextResponse.json(errorPayload, {
+      status: isTimeout ? 504 : 502,
+    });
   }
 }

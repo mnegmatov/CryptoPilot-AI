@@ -1,7 +1,21 @@
 import { Candle, Timeframe } from "../types";
 
-const BINANCE_BASE_URL = "https://api.binance.com";
-const BINANCE_FUTURES_URL = "https://fapi.binance.com";
+export const BINANCE_PUBLIC_ENDPOINTS = [
+  "https://data-api.binance.vision", // Dedicated public market data gateway (no geo-restriction)
+  "https://api1.binance.com",        // Mirror cluster 1
+  "https://api2.binance.com",        // Mirror cluster 2
+  "https://api3.binance.com",        // Mirror cluster 3
+  "https://api.binance.com",         // Standard base gateway
+];
+
+export const BINANCE_FUTURES_URL = "https://fapi.binance.com";
+
+export const REQUEST_TIMEOUT_MS = 8000;
+
+export const BINANCE_DEFAULT_HEADERS: Record<string, string> = {
+  "Content-Type": "application/json",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+};
 
 const TIMEFRAME_MAP: Record<Timeframe, string> = {
   "15m": "15m",
@@ -16,8 +30,48 @@ export function formatBinanceSymbol(symbol: string): string {
 }
 
 /**
+ * Resilient multi-endpoint fetcher that iterates across official Binance public gateways.
+ * Prioritizes data-api.binance.vision to circumvent regional datacenter restrictions.
+ */
+export async function fetchBinanceWithFallback<T>(
+  pathAndQuery: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const errors: string[] = [];
+
+  for (const baseEndpoint of BINANCE_PUBLIC_ENDPOINTS) {
+    const url = `${baseEndpoint}${pathAndQuery}`;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          ...BINANCE_DEFAULT_HEADERS,
+          ...(options.headers || {}),
+        },
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        return await res.json();
+      }
+
+      errors.push(`${baseEndpoint}: HTTP ${res.status} ${res.statusText}`);
+    } catch (err: any) {
+      const msg = err.name === "AbortError" ? `Timeout after ${REQUEST_TIMEOUT_MS}ms` : err.message;
+      errors.push(`${baseEndpoint}: ${msg}`);
+    }
+  }
+
+  throw new Error(`All Binance endpoints failed: ${errors.join(" | ")}`);
+}
+
+/**
  * Fetches real OHLCV historical candlestick data from Binance public API
- * Zero authentication required.
+ * Uses multi-endpoint fallback. Zero authentication required.
  */
 export async function fetchBinanceKlines(
   symbol: string,
@@ -26,18 +80,11 @@ export async function fetchBinanceKlines(
 ): Promise<Candle[]> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   const interval = TIMEFRAME_MAP[timeframe] || "1h";
-  const url = `${BINANCE_BASE_URL}/api/v3/klines?symbol=${formattedSymbol}&interval=${interval}&limit=${Math.min(limit, 1000)}`;
+  const path = `/api/v3/klines?symbol=${formattedSymbol}&interval=${interval}&limit=${Math.min(limit, 1000)}`;
 
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    next: { revalidate: 30 }, // Next.js cache 30s
+  const data = await fetchBinanceWithFallback<any[]>(path, {
+    next: { revalidate: 30 } as any,
   });
-
-  if (!response.ok) {
-    throw new Error(`Binance klines error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
 
   if (!Array.isArray(data)) {
     throw new Error("Invalid Binance klines response format");
@@ -57,7 +104,7 @@ export async function fetchBinanceKlines(
 
 /**
  * Fetches an extended historical range of real Binance candles using backward pagination.
- * Supports pulling thousands of bars (e.g. 4,000–8,000 bars = 6–12 months of 1H data).
+ * Uses resilient multi-endpoint fallback.
  */
 export async function fetchBinanceKlinesRange(
   symbol: string,
@@ -71,20 +118,12 @@ export async function fetchBinanceKlinesRange(
 
   while (allCandles.length < totalBars) {
     const fetchLimit = Math.min(1000, totalBars - allCandles.length);
-    let url = `${BINANCE_BASE_URL}/api/v3/klines?symbol=${formattedSymbol}&interval=${interval}&limit=${fetchLimit}`;
+    let path = `/api/v3/klines?symbol=${formattedSymbol}&interval=${interval}&limit=${fetchLimit}`;
     if (currentEndTime) {
-      url += `&endTime=${currentEndTime}`;
+      path += `&endTime=${currentEndTime}`;
     }
 
-    const response = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Binance klines range error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const data = await fetchBinanceWithFallback<any[]>(path);
     if (!Array.isArray(data) || data.length === 0) {
       break;
     }
@@ -104,7 +143,6 @@ export async function fetchBinanceKlinesRange(
     // Set endTime to 1ms before the earliest fetched candle in this chunk
     currentEndTime = chunk[0].timestamp - 1;
 
-    // If chunk returned fewer candles than requested, we reached the beginning of history
     if (chunk.length < fetchLimit) {
       break;
     }
@@ -128,7 +166,7 @@ export async function fetchBinanceKlinesRange(
 }
 
 /**
- * Fetches 24-hour ticker statistics from Binance
+ * Fetches 24-hour ticker statistics from Binance via resilient endpoint pool
  */
 export async function fetchBinance24hrTicker(symbol: string): Promise<{
   symbol: string;
@@ -141,18 +179,11 @@ export async function fetchBinance24hrTicker(symbol: string): Promise<{
   quoteVolume: number;
 }> {
   const formattedSymbol = formatBinanceSymbol(symbol);
-  const url = `${BINANCE_BASE_URL}/api/v3/ticker/24hr?symbol=${formattedSymbol}`;
+  const path = `/api/v3/ticker/24hr?symbol=${formattedSymbol}`;
 
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    next: { revalidate: 10 },
+  const data = await fetchBinanceWithFallback<any>(path, {
+    next: { revalidate: 10 } as any,
   });
-
-  if (!response.ok) {
-    throw new Error(`Binance ticker error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
 
   return {
     symbol: data.symbol,
@@ -167,7 +198,7 @@ export async function fetchBinance24hrTicker(symbol: string): Promise<{
 }
 
 /**
- * Fetches 24-hour ticker statistics for multiple symbols in a single batch request
+ * Fetches 24-hour ticker statistics for multiple symbols via resilient endpoint pool
  */
 export async function fetchBinanceBatchTickers(symbols: string[]): Promise<
   Array<{
@@ -182,18 +213,12 @@ export async function fetchBinanceBatchTickers(symbols: string[]): Promise<
   }>
 > {
   const formattedSymbols = JSON.stringify(symbols.map(formatBinanceSymbol));
-  const url = `${BINANCE_BASE_URL}/api/v3/ticker/24hr?symbols=${encodeURIComponent(formattedSymbols)}`;
+  const path = `/api/v3/ticker/24hr?symbols=${encodeURIComponent(formattedSymbols)}`;
 
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    next: { revalidate: 10 },
+  const data = await fetchBinanceWithFallback<any[]>(path, {
+    next: { revalidate: 10 } as any,
   });
 
-  if (!response.ok) {
-    throw new Error(`Binance batch ticker error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
   if (!Array.isArray(data)) return [];
 
   return data.map((item: any) => ({
@@ -215,10 +240,15 @@ export async function fetchBinanceFundingRate(symbol: string): Promise<number> {
   try {
     const formattedSymbol = formatBinanceSymbol(symbol);
     const url = `${BINANCE_FUTURES_URL}/fapi/v1/fundingRate?symbol=${formattedSymbol}&limit=1`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
     const response = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
-      next: { revalidate: 60 },
+      signal: controller.signal,
+      headers: BINANCE_DEFAULT_HEADERS,
+      next: { revalidate: 60 } as any,
     });
+    clearTimeout(timeoutId);
 
     if (!response.ok) return 0.0001; // Neutral baseline (0.01%)
 

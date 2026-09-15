@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMarketCandles, getMarketContext } from "@/core/data/market-feed";
 import { generateModelDSignalFrom4hCandles } from "@/core/signals/generator";
 import { computeModelDTelemetry, syncModelDTrailingStops } from "@/core/paper/model-d-tracker";
+import { ApiErrorResponse } from "@/core/types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +17,13 @@ export async function GET(request: NextRequest) {
     ]);
 
     if (candles4h.length < 50) {
-      return NextResponse.json(
-        { success: false, error: "Insufficient 4H candles from Binance" },
-        { status: 500 }
-      );
+      const errorPayload: ApiErrorResponse = {
+        success: false,
+        error: "Insufficient 4H candles from Binance (minimum 50 required)",
+        code: "UPSTREAM_UNAVAILABLE",
+        timestamp: Date.now(),
+      };
+      return NextResponse.json(errorPayload, { status: 502 });
     }
 
     // 1. Generate deterministic Model D signal
@@ -52,12 +56,20 @@ export async function GET(request: NextRequest) {
       success: true,
       signal,
       telemetry,
+      timestamp: Date.now(),
     });
   } catch (error: any) {
     console.error(`Error generating Model D signal for ${symbol}:`, error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to generate Model D signal" },
-      { status: 500 }
-    );
+    const isTimeout = error.message?.toLowerCase().includes("timeout");
+    const errorPayload: ApiErrorResponse = {
+      success: false,
+      error: error.message || "Failed to generate Model D signal",
+      code: isTimeout ? "UPSTREAM_TIMEOUT" : "UPSTREAM_UNAVAILABLE",
+      timestamp: Date.now(),
+    };
+
+    return NextResponse.json(errorPayload, {
+      status: isTimeout ? 504 : 502,
+    });
   }
 }

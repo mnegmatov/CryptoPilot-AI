@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { ColorType, createChart, IChartApi, ISeriesApi, LineStyle } from "lightweight-charts";
 import { Candle, Timeframe, TradingSignal } from "@/core/types";
 
@@ -11,6 +12,8 @@ interface TradingViewChartProps {
   candles: Candle[];
   signal: TradingSignal | null;
   loading: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 export const TradingViewChart: React.FC<TradingViewChartProps> = ({
@@ -20,6 +23,8 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   candles,
   signal,
   loading,
+  error,
+  onRetry,
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -88,20 +93,19 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
 
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
+    // Responsive ResizeObserver handles viewport transitions, mobile switching, and orientation changes
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (!entries[0] || !chartRef.current) return;
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) {
+        chartRef.current.applyOptions({ width, height });
       }
-    };
+    });
 
-    window.addEventListener("resize", handleResize);
-    handleResize();
+    resizeObserver.observe(chartContainerRef.current);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
       chart.remove();
     };
   }, []);
@@ -122,61 +126,69 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     const formattedVolume = candles.map((c) => ({
       time: Math.floor(c.timestamp / 1000) as any,
       value: c.volume,
-      color: c.close >= c.open ? "rgba(16, 185, 129, 0.25)" : "rgba(244, 63, 94, 0.25)",
+      color: c.close >= c.open ? "rgba(16, 185, 129, 0.2)" : "rgba(244, 63, 94, 0.2)",
     }));
 
     candleSeriesRef.current.setData(formattedCandles);
     volumeSeriesRef.current.setData(formattedVolume);
 
-    // Overlay Signal Price Lines (Entry, Stop Loss, TP1, TP2)
-    if (signal) {
-      // Clear previous price lines if possible by recreating or resetting series markers
-      try {
-        candleSeriesRef.current.createPriceLine({
-          price: signal.entryRange.ideal,
-          color: "#38BDF8",
-          lineWidth: 2,
-          lineStyle: LineStyle.Solid,
-          axisLabelVisible: true,
-          title: "ВХОД",
-        });
+    // Apply Entry / Stop Loss / TP lines if signal exists
+    if (signal && chartRef.current) {
+      // Remove old lines if any
+      const markers: any[] = [];
 
-        candleSeriesRef.current.createPriceLine({
-          price: signal.stopLoss,
+      if (signal.stance === "BUY") {
+        markers.push({
+          time: Math.floor(signal.timestamp / 1000),
+          position: "belowBar",
+          color: "#38BDF8",
+          shape: "arrowUp",
+          text: `ВХОД LONG $${signal.entryRange.ideal.toLocaleString()}`,
+        });
+      } else if (signal.stance === "SHORT") {
+        markers.push({
+          time: Math.floor(signal.timestamp / 1000),
+          position: "aboveBar",
           color: "#F43F5E",
-          lineWidth: 2,
+          shape: "arrowDown",
+          text: `ВХОД SHORT $${signal.entryRange.ideal.toLocaleString()}`,
+        });
+      }
+
+      if (markers.length > 0) {
+        candleSeriesRef.current.setMarkers(markers);
+      }
+
+      // Draw horizontal price lines on candle series
+      candleSeriesRef.current.createPriceLine({
+        price: signal.entryRange.ideal,
+        color: "#38BDF8",
+        lineWidth: 1,
+        lineStyle: LineStyle.Dotted,
+        axisLabelVisible: true,
+        title: "ВХОД",
+      });
+
+      candleSeriesRef.current.createPriceLine({
+        price: signal.stopLoss,
+        color: "#F43F5E",
+        lineWidth: 1,
+        lineStyle: LineStyle.Solid,
+        axisLabelVisible: true,
+        title: "СТОП-ЛОСС",
+      });
+
+      signal.takeProfitTargets.forEach((tp) => {
+        candleSeriesRef.current?.createPriceLine({
+          price: tp.price,
+          color: "#10B981",
+          lineWidth: 1,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
-          title: `СТОП (${signal.stopLossPercentage}%)`,
+          title: `ТП${tp.level} (${tp.rewardRisk}R)`,
         });
+      });
 
-        if (signal.takeProfitTargets[0]) {
-          candleSeriesRef.current.createPriceLine({
-            price: signal.takeProfitTargets[0].price,
-            color: "#10B981",
-            lineWidth: 1,
-            lineStyle: LineStyle.Dashed,
-            axisLabelVisible: true,
-            title: `ТП1 (${signal.takeProfitTargets[0].rewardRisk}R)`,
-          });
-        }
-
-        if (signal.takeProfitTargets[1]) {
-          candleSeriesRef.current.createPriceLine({
-            price: signal.takeProfitTargets[1].price,
-            color: "#10B981",
-            lineWidth: 2,
-            lineStyle: LineStyle.Solid,
-            axisLabelVisible: true,
-            title: `ТП2 (${signal.takeProfitTargets[1].rewardRisk}R)`,
-          });
-        }
-      } catch (err) {
-        // Handle price line updates
-      }
-    }
-
-    if (chartRef.current) {
       chartRef.current.timeScale().fitContent();
     }
   }, [candles, signal]);
@@ -184,22 +196,22 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   const timeframes: Timeframe[] = ["15m", "1h", "4h", "1d"];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#0B0E14] border-r border-[#1E2638]">
+    <div className="flex-1 flex flex-col h-full bg-[#0B0E14] lg:border-r border-[#1E2638]">
       {/* Chart Control Bar */}
-      <div className="h-12 border-b border-[#1E2638] px-4 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
+      <div className="h-12 border-b border-[#1E2638] px-3 sm:px-4 flex items-center justify-between">
+        <div className="flex items-center space-x-2 sm:space-x-3">
           <span className="font-bold text-sm text-white">
             {symbol.replace("USDT", "")}/USDT
           </span>
-          <span className="text-xs text-[#7B849B]">Свечной график 60fps</span>
+          <span className="hidden sm:inline text-xs text-[#7B849B]">Свечной график</span>
 
-          {/* Timeframe Selector */}
-          <div className="flex bg-[#141A29] p-0.5 rounded border border-[#1E2638] ml-2">
+          {/* Timeframe Selector with touch targets */}
+          <div className="flex bg-[#141A29] p-0.5 rounded border border-[#1E2638] ml-1 sm:ml-2">
             {timeframes.map((tf) => (
               <button
                 key={tf}
                 onClick={() => onTimeframeChange(tf)}
-                className={`px-2.5 py-1 text-xs font-mono font-medium rounded transition-colors ${
+                className={`px-2.5 py-1 min-h-[32px] sm:min-h-[28px] text-xs font-mono font-medium rounded transition-colors ${
                   timeframe === tf
                     ? "bg-sky-500 text-white shadow-sm"
                     : "text-[#7B849B] hover:text-white"
@@ -212,32 +224,54 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         </div>
 
         {/* Legend */}
-        <div className="hidden sm:flex items-center space-x-4 text-xs font-mono">
-          <div className="flex items-center space-x-1.5">
+        <div className="hidden sm:flex items-center space-x-3 text-xs font-mono">
+          <div className="flex items-center space-x-1">
             <span className="h-2 w-2 rounded-full bg-sky-400" />
             <span className="text-[#7B849B]">Вход</span>
           </div>
-          <div className="flex items-center space-x-1.5">
+          <div className="flex items-center space-x-1">
             <span className="h-2 w-2 rounded-full bg-rose-500" />
-            <span className="text-[#7B849B]">Стоп-лосс</span>
+            <span className="text-[#7B849B]">Стоп</span>
           </div>
-          <div className="flex items-center space-x-1.5">
+          <div className="flex items-center space-x-1">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            <span className="text-[#7B849B]">Тейк-профит</span>
+            <span className="text-[#7B849B]">ТП</span>
           </div>
         </div>
       </div>
 
-      {/* Chart Canvas */}
+      {/* Chart Canvas & Overlays */}
       <div className="flex-1 relative w-full h-[calc(100%-3rem)] min-h-[350px]">
         {loading && (
           <div className="absolute inset-0 z-10 bg-[#0B0E14]/60 backdrop-blur-sm flex items-center justify-center">
             <div className="flex items-center space-x-2 text-sky-400 text-xs font-mono">
-              <div className="h-3 w-3 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-              <span>Загрузка рыночных данных...</span>
+              <div className="h-3.5 w-3.5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+              <span>Загрузка рыночных свечей...</span>
             </div>
           </div>
         )}
+
+        {error && candles.length === 0 && (
+          <div className="absolute inset-0 z-20 bg-[#0B0E14]/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center space-y-3">
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <AlertTriangle className="h-6 w-6 text-amber-400" />
+            </div>
+            <div className="text-sm font-semibold text-white">Не удалось загрузить свечной график</div>
+            <div className="text-xs text-[#7B849B] max-w-sm leading-relaxed">
+              {error}
+            </div>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="mt-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center space-x-1.5"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Повторить загрузку</span>
+              </button>
+            )}
+          </div>
+        )}
+
         <div ref={chartContainerRef} className="w-full h-full" />
       </div>
     </div>

@@ -226,3 +226,18 @@ export interface PaperAccount {
   positions: PaperPosition[];
   tradeHistory: PaperPosition[];
 }
+
+export interface ApiErrorResponse {
+  success: false;
+  error: string;
+  code?: "UPSTREAM_TIMEOUT" | "UPSTREAM_UNAVAILABLE" | "INVALID_PAYLOAD" | "INTERNAL_ERROR";
+  timestamp: number;
+}
+
+export type ApiResponse<T> = ({ success: true } & T) | ApiErrorResponse;
+
+export interface StaleQuoteState {
+  isStale: boolean;
+  lastUpdated?: number;
+  message?: string;
+}
