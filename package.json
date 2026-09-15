@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000 -H 0.0.0.0",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3000 -H 0.0.0.0",
     "lint": "next lint",
     "test": "vitest run"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.0",
+    "@google/genai": "^2.22.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.4",
     "lightweight-charts": "^4.2.2",

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { TradingSignal } from "../types";
 
 export interface AIExplanationResult {
@@ -79,8 +79,7 @@ export async function generateAIExplanation(signal: TradingSignal): Promise<AIEx
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `
 Вы — ведущий квант-аналитик и риск-менеджер крипто-терминала CryptoPilot AI.
@@ -117,8 +116,14 @@ export async function generateAIExplanation(signal: TradingSignal): Promise<AIEx
 }
 `;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const result = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+    const text = (result.text || "").trim();
     const cleanedJson = text.replace(/^```json\n?/, "").replace(/\n?```$/, "");
     const parsed = JSON.parse(cleanedJson);
 

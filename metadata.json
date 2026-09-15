@@ -1,0 +1,6 @@
+{
+  "name": "CryptoPilot AI",
+  "description": "Institutional crypto market analyst & signal platform with deterministic quant indicators, multi-timeframe confluence, risk guardrails, backtesting, and paper trading.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
