@@ -31,14 +31,14 @@ describe("Desktop Three-Panel Terminal MVP (T006)", () => {
 
   it("verifies desktop panel width allocations conform to 3-panel geometry", () => {
     const desktopPanelConfig = {
-      watchlistWidthPx: 260,
-      dossierWidthPx: 420,
+      watchlistWidthPx: 220,
+      dossierWidthPx: 360,
       chartFlex: "flex-1 min-w-0",
-      containerHeightClass: "h-[calc(100vh-4rem)]",
+      containerHeightClass: "flex-1 min-h-0",
     };
 
-    expect(desktopPanelConfig.watchlistWidthPx).toBe(260);
-    expect(desktopPanelConfig.dossierWidthPx).toBe(420);
+    expect(desktopPanelConfig.watchlistWidthPx).toBe(220);
+    expect(desktopPanelConfig.dossierWidthPx).toBe(360);
     expect(desktopPanelConfig.chartFlex).toContain("min-w-0");
   });
 });

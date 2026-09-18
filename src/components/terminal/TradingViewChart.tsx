@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { AlertTriangle, Maximize2, RefreshCw } from "lucide-react";
-import { ColorType, createChart, IChartApi, ISeriesApi, LineStyle } from "lightweight-charts";
+import { ColorType, createChart, IChartApi, IPriceLine, ISeriesApi, LineStyle } from "lightweight-charts";
 import { Candle, Timeframe, TradingSignal } from "@/core/types";
 
 interface TradingViewChartProps {
@@ -28,19 +28,23 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   onRetry,
   onOpenMobileWatchlist,
 }) => {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const priceLinesRef = useRef<IPriceLine[]>([]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Initialize Lightweight Chart with explicit initial dimensions to avoid 0×0 canvas
-    // during Next.js streaming hydration where flex dimensions resolve asynchronously.
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
-      height: chartContainerRef.current.clientHeight,
+    const container = chartContainerRef.current;
+    const initialWidth = container.clientWidth || (wrapperRef.current?.clientWidth ?? 600);
+    const initialHeight = container.clientHeight || (wrapperRef.current?.clientHeight ?? 400);
+
+    const chart = createChart(container, {
+      width: Math.max(initialWidth, 100),
+      height: Math.max(initialHeight, 100),
       layout: {
         background: { type: ColorType.Solid, color: "#0B0E14" },
         textColor: "#7B849B",
@@ -69,7 +73,6 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       },
     });
 
-    // Candlestick Series
     const candleSeries = chart.addCandlestickSeries({
       upColor: "#10B981",
       downColor: "#F43F5E",
@@ -78,13 +81,12 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       wickDownColor: "#F43F5E",
     });
 
-    // Volume Histogram Series
     const volumeSeries = chart.addHistogramSeries({
       color: "#1E2638",
       priceFormat: {
         type: "volume",
       },
-      priceScaleId: "", // Overlay on chart
+      priceScaleId: "",
     });
 
     volumeSeries.priceScale().applyOptions({
@@ -98,28 +100,29 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
 
-    // Responsive ResizeObserver handles viewport transitions, mobile switching, and orientation changes
+    const targetElement = wrapperRef.current || container;
     const resizeObserver = new ResizeObserver((entries) => {
       if (!entries[0] || !chartRef.current) return;
       const { width, height } = entries[0].contentRect;
       if (width > 0 && height > 0) {
         chartRef.current.applyOptions({ width, height });
-        // Redraw all loaded data at the new canvas dimensions.
-        // Required when candle data arrives before the first ResizeObserver callback
-        // (race condition during streaming hydration on Vercel production).
         chartRef.current.timeScale().fitContent();
       }
     });
 
-    resizeObserver.observe(chartContainerRef.current);
+    resizeObserver.observe(targetElement);
 
     return () => {
       resizeObserver.disconnect();
       chart.remove();
+      chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      priceLinesRef.current = [];
     };
   }, []);
 
-  // Update data when candles change
+  // Update data when candles or signal changes
   useEffect(() => {
     if (!candleSeriesRef.current || !volumeSeriesRef.current || candles.length === 0) return;
 
@@ -141,9 +144,21 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     candleSeriesRef.current.setData(formattedCandles);
     volumeSeriesRef.current.setData(formattedVolume);
 
+    // CRITICAL: Always fitContent immediately when candles are loaded
+    chartRef.current?.timeScale().fitContent();
+
+    // Clean up previous price lines
+    if (priceLinesRef.current.length > 0 && candleSeriesRef.current) {
+      priceLinesRef.current.forEach((pl) => {
+        try {
+          candleSeriesRef.current?.removePriceLine(pl);
+        } catch (e) {}
+      });
+      priceLinesRef.current = [];
+    }
+
     // Apply Entry / Stop Loss / TP lines if signal exists
-    if (signal && chartRef.current) {
-      // Remove old lines if any
+    if (signal && candleSeriesRef.current && chartRef.current) {
       const markers: any[] = [];
 
       if (signal.stance === "BUY") {
@@ -164,40 +179,48 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         });
       }
 
-      if (markers.length > 0) {
-        candleSeriesRef.current.setMarkers(markers);
+      candleSeriesRef.current.setMarkers(markers);
+
+      if (signal.entryRange && signal.entryRange.ideal > 0) {
+        const entryLine = candleSeriesRef.current.createPriceLine({
+          price: signal.entryRange.ideal,
+          color: "#38BDF8",
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: "ВХОД",
+        });
+        priceLinesRef.current.push(entryLine);
       }
 
-      // Draw horizontal price lines on candle series
-      candleSeriesRef.current.createPriceLine({
-        price: signal.entryRange.ideal,
-        color: "#38BDF8",
-        lineWidth: 1,
-        lineStyle: LineStyle.Dotted,
-        axisLabelVisible: true,
-        title: "ВХОД",
-      });
-
-      candleSeriesRef.current.createPriceLine({
-        price: signal.stopLoss,
-        color: "#F43F5E",
-        lineWidth: 1,
-        lineStyle: LineStyle.Solid,
-        axisLabelVisible: true,
-        title: "СТОП-ЛОСС",
-      });
+      if (signal.stopLoss && signal.stopLoss > 0) {
+        const slLine = candleSeriesRef.current.createPriceLine({
+          price: signal.stopLoss,
+          color: "#F43F5E",
+          lineWidth: 1,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: "СТОП-ЛОСС",
+        });
+        priceLinesRef.current.push(slLine);
+      }
 
       const isModelD = signal.id.includes("model_d");
-      signal.takeProfitTargets.forEach((tp) => {
-        candleSeriesRef.current?.createPriceLine({
-          price: tp.price,
-          color: isModelD ? "#38BDF8" : "#10B981",
-          lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: isModelD ? `Рубеж +${tp.rewardRisk}R (Milestone)` : `ТП${tp.level} (${tp.rewardRisk}R)`,
+      if (Array.isArray(signal.takeProfitTargets)) {
+        signal.takeProfitTargets.forEach((tp) => {
+          if (tp.price > 0) {
+            const tpLine = candleSeriesRef.current?.createPriceLine({
+              price: tp.price,
+              color: isModelD ? "#38BDF8" : "#10B981",
+              lineWidth: 1,
+              lineStyle: LineStyle.Dashed,
+              axisLabelVisible: true,
+              title: isModelD ? `Рубеж +${tp.rewardRisk}R (Milestone)` : `ТП${tp.level} (${tp.rewardRisk}R)`,
+            });
+            if (tpLine) priceLinesRef.current.push(tpLine);
+          }
         });
-      });
+      }
 
       chartRef.current.timeScale().fitContent();
     }
@@ -219,20 +242,23 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       {/* Chart Control Bar */}
       <div className="h-12 border-b border-[#1E2638] px-3 sm:px-4 flex items-center justify-between">
         <div className="flex items-center space-x-2 sm:space-x-3">
-          {onOpenMobileWatchlist ? (
-            <button
-              onClick={onOpenMobileWatchlist}
-              className="lg:pointer-events-none flex items-center space-x-1.5 font-bold text-sm text-white hover:text-sky-400 transition-colors"
-              title="Выбрать другую пару"
-            >
-              <span>{symbol.replace("USDT", "")}/USDT</span>
-              <span className="lg:hidden text-xs text-[#7B849B]">▼</span>
-            </button>
-          ) : (
-            <span className="font-bold text-sm text-white">
-              {symbol.replace("USDT", "")}/USDT
+          {/* Symbol & Pair Selector */}
+          <div className="flex items-center space-x-2">
+            <span className="font-bold text-sm text-white tracking-tight">
+              {symbol.replace("USDT", "")}
+              <span className="text-xs text-[#7B849B] font-normal">/USDT</span>
             </span>
-          )}
+            {onOpenMobileWatchlist && (
+              <button
+                onClick={onOpenMobileWatchlist}
+                className="lg:hidden px-2 py-0.5 rounded bg-[#141A29] border border-[#1E2638] text-[11px] text-[#7B849B] hover:text-white flex items-center space-x-1"
+                title="Выбрать другую пару"
+              >
+                <span>Пары</span>
+                <span className="text-[9px]">▼</span>
+              </button>
+            )}
+          </div>
 
           {/* Live Price Badge */}
           {currentPrice !== null && (
@@ -298,9 +324,9 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       </div>
 
       {/* Chart Canvas & Overlays */}
-      <div className="flex-1 relative w-full h-[calc(100%-3rem)] min-h-[350px]">
+      <div ref={wrapperRef} className="flex-1 min-h-0 relative w-full h-full overflow-hidden">
         {loading && (
-          <div className="absolute inset-0 z-10 bg-[#0B0E14]/60 backdrop-blur-sm flex items-center justify-center">
+          <div className="absolute inset-0 z-20 bg-[#0B0E14]/60 backdrop-blur-sm flex items-center justify-center">
             <div className="flex items-center space-x-2 text-sky-400 text-xs font-mono">
               <div className="h-3.5 w-3.5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
               <span>Загрузка рыночных свечей...</span>
@@ -309,7 +335,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         )}
 
         {error && candles.length === 0 && (
-          <div className="absolute inset-0 z-20 bg-[#0B0E14]/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center space-y-3">
+          <div className="absolute inset-0 z-30 bg-[#0B0E14]/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center space-y-3">
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
               <AlertTriangle className="h-6 w-6 text-amber-400" />
             </div>
@@ -329,7 +355,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
           </div>
         )}
 
-        <div ref={chartContainerRef} className="w-full h-full" />
+        <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" />
       </div>
     </div>
   );

@@ -251,7 +251,7 @@ export default function TerminalPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080B10] flex flex-col font-sans">
+    <div className="h-screen bg-[#080B10] flex flex-col font-sans overflow-hidden">
       {/* Top Global Header */}
       <Header
         activeTab={activeTab}
@@ -261,9 +261,9 @@ export default function TerminalPage() {
       />
 
       {/* Main View Router */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {activeTab === "terminal" && (
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Mobile Navigation Segmented Switcher (Visible only < 1024px) */}
             <div className="flex lg:hidden bg-[#0A0E17] border-b border-[#1E2638] p-2 gap-1.5 shrink-0 z-10">
               <button
@@ -302,12 +302,12 @@ export default function TerminalPage() {
             </div>
 
             {/* Terminal Main Workspace: 3-column on >= 1024px, single active section on < 1024px */}
-            <div className="flex-1 flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden">
-              {/* Left Watchlist */}
+            <div className="flex-1 min-h-0 flex flex-col lg:flex-row w-full overflow-hidden">
+              {/* Left Watchlist (~220px fixed) */}
               <div
                 className={`h-full ${
                   mobileSection === "watchlist" ? "flex flex-col flex-1" : "hidden"
-                } lg:flex lg:w-[260px] shrink-0`}
+                } lg:flex lg:w-[220px] shrink-0`}
               >
                 <Watchlist
                   assets={watchlist}
@@ -322,7 +322,7 @@ export default function TerminalPage() {
                 />
               </div>
 
-              {/* Center Candlestick Chart */}
+              {/* Center Candlestick Chart (flex-1 fill) */}
               <div
                 className={`h-full ${
                   mobileSection === "chart" ? "flex flex-col flex-1" : "hidden"
@@ -341,11 +341,11 @@ export default function TerminalPage() {
                 />
               </div>
 
-              {/* Right Signal Dossier & AI Analyst */}
+              {/* Right Signal Dossier (~360px fixed) */}
               <div
                 className={`h-full ${
                   mobileSection === "signal" ? "flex flex-col flex-1" : "hidden"
-                } lg:flex lg:w-[420px] shrink-0`}
+                } lg:flex lg:w-[360px] shrink-0`}
               >
                 <SignalDossier
                   signal={signal}
