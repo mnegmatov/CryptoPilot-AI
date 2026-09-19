@@ -303,11 +303,11 @@ export default function TerminalPage() {
 
             {/* Terminal Main Workspace: 3-column on >= 1024px, single active section on < 1024px */}
             <div className="flex-1 min-h-0 flex flex-col lg:flex-row w-full overflow-hidden">
-              {/* Left Watchlist (~220px fixed) */}
+              {/* Left Watchlist (~210px fixed) */}
               <div
                 className={`h-full ${
                   mobileSection === "watchlist" ? "flex flex-col flex-1" : "hidden"
-                } lg:flex lg:w-[220px] shrink-0`}
+                } lg:flex lg:w-[210px] shrink-0`}
               >
                 <Watchlist
                   assets={watchlist}
@@ -341,11 +341,11 @@ export default function TerminalPage() {
                 />
               </div>
 
-              {/* Right Signal Dossier (~360px fixed) */}
+              {/* Right Signal Dossier (~350px fixed) */}
               <div
                 className={`h-full ${
                   mobileSection === "signal" ? "flex flex-col flex-1" : "hidden"
-                } lg:flex lg:w-[360px] shrink-0`}
+                } lg:flex lg:w-[350px] shrink-0`}
               >
                 <SignalDossier
                   signal={signal}

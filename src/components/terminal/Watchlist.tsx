@@ -46,15 +46,15 @@ export const Watchlist: React.FC<WatchlistProps> = ({
   });
 
   return (
-    <div className="w-full lg:w-[220px] shrink-0 bg-[#0E131F] lg:border-r border-[#1E2638] flex flex-col h-full overflow-hidden">
+    <div className="w-full lg:w-[210px] shrink-0 bg-[#0E131F] lg:border-r border-[#1E2638] flex flex-col h-full overflow-hidden">
       {/* Header & Refresh */}
-      <div className="p-2.5 border-b border-[#1E2638] flex items-center justify-between bg-[#0E131F] shrink-0">
+      <div className="px-2.5 py-2 border-b border-[#1E2638] flex items-center justify-between bg-[#0E131F] shrink-0">
         <div className="flex items-center space-x-1.5">
           <span className="text-xs font-bold text-white tracking-tight">
             Рынки
           </span>
-          <span className="text-[10px] text-[#7B849B] bg-[#141A29] px-1.5 py-0.2 rounded border border-[#1E2638]">
-            Binance
+          <span className="text-[9px] font-mono text-[#7B849B] bg-[#141A29] px-1.5 py-0.2 rounded border border-[#1E2638]">
+            {filteredAssets.length}
           </span>
         </div>
         {onRetry && (
@@ -70,7 +70,7 @@ export const Watchlist: React.FC<WatchlistProps> = ({
       </div>
 
       {/* Quick Search Filter */}
-      <div className="p-2 border-b border-[#1E2638] bg-[#0A0E17] shrink-0">
+      <div className="p-1.5 border-b border-[#1E2638] bg-[#0A0E17] shrink-0">
         <div className="relative flex items-center">
           <Search className="h-3 w-3 text-[#7B849B] absolute left-2 pointer-events-none" />
           <input
@@ -83,20 +83,14 @@ export const Watchlist: React.FC<WatchlistProps> = ({
         </div>
       </div>
 
-      {/* Column Headers */}
-      <div className="px-2.5 py-1.5 border-b border-[#1E2638]/60 bg-[#0E131F] flex items-center justify-between text-[10px] font-mono text-[#7B849B] uppercase shrink-0">
-        <span>Тикер</span>
-        <span>Цена / 24ч</span>
-      </div>
-
       {/* Stale Data Amber Notice */}
       {isStale && (
-        <div className="px-2.5 py-1.5 bg-amber-500/10 border-b border-amber-500/20 text-[10px] text-amber-300 flex items-center justify-between shrink-0">
+        <div className="px-2 py-1 bg-amber-500/10 border-b border-amber-500/20 text-[10px] text-amber-300 flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-1 truncate">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
             <span className="truncate">
               {lastUpdated
-                ? `Данные: ${new Date(lastUpdated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                ? `${new Date(lastUpdated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
                 : "Связь..."}
             </span>
           </div>
@@ -132,10 +126,10 @@ export const Watchlist: React.FC<WatchlistProps> = ({
       ) : (
         <div className="flex-1 overflow-y-auto divide-y divide-[#1E2638]/40">
           {loading && assets.length === 0 ? (
-            <div className="p-3 space-y-2.5">
+            <div className="p-2.5 space-y-2">
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div key={i} className="animate-pulse flex justify-between py-1">
-                  <div className="h-3.5 bg-[#1E2638] rounded w-14" />
+                  <div className="h-3.5 bg-[#1E2638] rounded w-12" />
                   <div className="h-3.5 bg-[#1E2638] rounded w-16" />
                 </div>
               ))}
@@ -153,22 +147,17 @@ export const Watchlist: React.FC<WatchlistProps> = ({
                 <button
                   key={asset.symbol}
                   onClick={() => handleSelect(asset.symbol)}
-                  className={`w-full text-left px-2.5 py-2 min-h-[38px] transition-all flex items-center justify-between group ${
+                  className={`w-full text-left px-2.5 py-2 min-h-[36px] transition-all flex items-center justify-between group ${
                     isSelected
-                      ? "bg-[#1E2638] border-l-2 border-sky-400 text-white"
+                      ? "bg-[#162032] border-l-2 border-sky-400 text-white"
                       : "hover:bg-[#141A29]/70 text-[#CBD5E1]"
                   }`}
                 >
-                  <div className="min-w-0 pr-1">
-                    <div className="flex items-center space-x-1">
-                      <span className={`font-mono text-xs font-bold ${isSelected ? "text-sky-300" : "text-white group-hover:text-sky-300"}`}>
-                        {asset.symbol.replace("USDT", "")}
-                      </span>
-                      <span className="text-[9px] text-[#7B849B]">/USDT</span>
-                    </div>
-                    <div className="text-[10px] text-[#7B849B] truncate max-w-[80px]">
-                      {asset.name}
-                    </div>
+                  <div className="flex items-baseline space-x-1">
+                    <span className={`font-mono text-xs font-bold ${isSelected ? "text-sky-300" : "text-white group-hover:text-sky-300"}`}>
+                      {asset.symbol.replace("USDT", "")}
+                    </span>
+                    <span className="text-[9px] text-[#7B849B] font-mono">/USDT</span>
                   </div>
 
                   <div className="text-right shrink-0">

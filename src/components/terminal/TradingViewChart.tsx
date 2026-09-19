@@ -239,30 +239,30 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0B0E14] lg:border-r border-[#1E2638]">
-      {/* Chart Control Bar */}
-      <div className="h-12 border-b border-[#1E2638] px-3 sm:px-4 flex items-center justify-between">
+      {/* Chart Control Bar (Sleek h-10) */}
+      <div className="h-10 border-b border-[#1E2638] px-3 sm:px-4 flex items-center justify-between bg-[#0B0E14] shrink-0">
         <div className="flex items-center space-x-2 sm:space-x-3">
           {/* Symbol & Pair Selector */}
-          <div className="flex items-center space-x-2">
-            <span className="font-bold text-sm text-white tracking-tight">
+          <div className="flex items-center space-x-1.5">
+            <span className="font-mono font-bold text-xs sm:text-sm text-white tracking-tight">
               {symbol.replace("USDT", "")}
-              <span className="text-xs text-[#7B849B] font-normal">/USDT</span>
+              <span className="text-[10px] text-[#7B849B] font-normal">/USDT</span>
             </span>
             {onOpenMobileWatchlist && (
               <button
                 onClick={onOpenMobileWatchlist}
-                className="lg:hidden px-2 py-0.5 rounded bg-[#141A29] border border-[#1E2638] text-[11px] text-[#7B849B] hover:text-white flex items-center space-x-1"
+                className="lg:hidden px-1.5 py-0.5 rounded bg-[#141A29] border border-[#1E2638] text-[10px] text-[#7B849B] hover:text-white flex items-center space-x-1"
                 title="Выбрать другую пару"
               >
                 <span>Пары</span>
-                <span className="text-[9px]">▼</span>
+                <span className="text-[8px]">▼</span>
               </button>
             )}
           </div>
 
           {/* Live Price Badge */}
           {currentPrice !== null && (
-            <div className="hidden sm:flex items-center px-2 py-0.5 rounded bg-[#141A29] border border-[#1E2638] text-xs font-mono font-medium text-white">
+            <div className="hidden sm:flex items-center px-2 py-0.5 rounded bg-[#141A29] border border-[#1E2638] text-[11px] font-mono font-semibold text-white">
               <span className="text-[#7B849B] mr-0.5">$</span>
               <span>
                 {currentPrice > 1
@@ -276,49 +276,50 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
           )}
 
           {/* Timeframe Selector with hotkey indicators */}
-          <div className="flex bg-[#141A29] p-0.5 rounded border border-[#1E2638] ml-1 sm:ml-2">
+          <div className="flex bg-[#141A29] p-0.5 rounded border border-[#1E2638] ml-1">
             {timeframes.map((tf) => (
               <button
                 key={tf}
                 onClick={() => onTimeframeChange(tf)}
                 title={`Таймфрейм ${tf.toUpperCase()} [${timeframeHotkeys[tf]}]`}
-                className={`px-2 sm:px-2.5 py-1 min-h-[32px] sm:min-h-[28px] text-xs font-mono font-medium rounded transition-colors flex items-center space-x-1 ${
+                className={`px-2 py-0.5 min-h-[24px] text-[11px] font-mono font-medium rounded transition-colors flex items-center space-x-1 ${
                   timeframe === tf
                     ? "bg-sky-500 text-white shadow-sm font-semibold"
                     : "text-[#7B849B] hover:text-white"
                 }`}
               >
                 <span>{tf.toUpperCase()}</span>
-                <span className="hidden xl:inline text-[9px] opacity-60">[{timeframeHotkeys[tf]}]</span>
+                <span className="hidden xl:inline text-[8px] opacity-60">[{timeframeHotkeys[tf]}]</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Legend & Fit Content Trigger */}
-        <div className="flex items-center space-x-3 text-xs font-mono">
-          <div className="hidden sm:flex items-center space-x-3">
+        {/* Dynamic Contextual Legend & Auto-fit Trigger */}
+        <div className="flex items-center space-x-3 text-[11px] font-mono">
+          <div className="hidden md:flex items-center space-x-2.5">
             <div className="flex items-center space-x-1">
-              <span className="h-2 w-2 rounded-full bg-sky-400" />
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
               <span className="text-[#7B849B]">Вход</span>
             </div>
             <div className="flex items-center space-x-1">
-              <span className="h-2 w-2 rounded-full bg-rose-500" />
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
               <span className="text-[#7B849B]">Стоп</span>
             </div>
             <div className="flex items-center space-x-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              <span className="text-[#7B849B]">ТП</span>
+              <span className={`h-1.5 w-1.5 rounded-full ${signal?.id.includes("model_d") ? "bg-sky-400" : "bg-emerald-500"}`} />
+              <span className="text-[#7B849B]">{signal?.id.includes("model_d") ? "Рубежи" : "ТП"}</span>
             </div>
           </div>
 
-          {/* Fit Content Button */}
+          {/* Auto-fit Button */}
           <button
             onClick={() => chartRef.current?.timeScale().fitContent()}
-            title="Масштабировать график по размеру"
-            className="p-1.5 hover:bg-[#141A29] rounded text-[#7B849B] hover:text-white transition-colors border border-transparent hover:border-[#1E2638]"
+            title="Масштабировать свечи по размеру окна"
+            className="flex items-center space-x-1 px-1.5 py-1 rounded bg-[#141A29] hover:bg-[#1E2638] text-[#7B849B] hover:text-white transition-colors border border-[#1E2638]"
           >
-            <Maximize2 className="h-3.5 w-3.5" />
+            <Maximize2 className="h-3 w-3" />
+            <span className="text-[10px] hidden sm:inline">Авто-масштаб</span>
           </button>
         </div>
       </div>
