@@ -53,6 +53,9 @@ export default function TerminalPage() {
 
       if (isInputActive) return;
 
+      // Never intercept modifier keys (Cmd/Ctrl/Alt) to avoid hijacking browser/system shortcuts like Cmd+1..4
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
       if (e.key === "1") {
         setTimeframe("15m");
       } else if (e.key === "2") {

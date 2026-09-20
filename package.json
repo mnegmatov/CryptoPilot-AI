@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.22.0",
+    "@upstash/redis": "^1.38.4",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.4",
     "lightweight-charts": "^4.2.2",

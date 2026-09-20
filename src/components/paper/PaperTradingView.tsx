@@ -41,7 +41,10 @@ export const PaperTradingView: React.FC = () => {
 
   const fetchAccount = async () => {
     try {
-      const res = await fetch("/api/paper");
+      const res = await fetch("/api/paper", {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
       const data = await res.json();
       if (data.success && data.account) {
         setAccount(data.account);
@@ -56,7 +59,10 @@ export const PaperTradingView: React.FC = () => {
   const fetchModelD = async (symbol: string) => {
     setLoadingModelD(true);
     try {
-      const res = await fetch(`/api/signal-model-d?symbol=${symbol}&autoTrade=true`);
+      const res = await fetch(`/api/signal-model-d?symbol=${symbol}&autoTrade=true`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
       const data = await res.json();
       if (data.success) {
         setModelDData(data);
@@ -369,7 +375,16 @@ export const PaperTradingView: React.FC = () => {
                       >
                         {signal?.stance || "WAIT"}
                       </strong>{" "}
-                      (Signal Score: {signal?.confidenceScore || 0}/100)
+                      {signal?.stance === "BUY" || signal?.stance === "SHORT" ? (
+                        <span>(Signal Score: {signal.confidenceScore}/100)</span>
+                      ) : (
+                        <span>
+                          (Score: — | Причина:{" "}
+                          <span className="text-[#CBD5E1]">
+                            {signal?.invalidationConditions?.[0] || "Ожидание отката цены к 4H EMA20"}
+                          </span>)
+                        </span>
+                      )}
                     </span>
                   )}
                 </span>

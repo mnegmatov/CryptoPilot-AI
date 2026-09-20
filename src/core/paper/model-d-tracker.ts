@@ -1,7 +1,7 @@
 import { Candle, MarketContextData, PaperPosition, TradingSignal } from "../types";
 import { calculateATR, calculateEMA } from "../quant/indicators";
 import { generateModelDSignalFrom4hCandles } from "../signals/generator";
-import { PaperTradingWallet, globalPaperWallet } from "./wallet";
+import { PaperTradingWallet, getGlobalPaperWallet } from "./wallet";
 
 export interface ModelDTelemetry {
   symbol: string;
@@ -98,12 +98,13 @@ export function computeModelDTelemetry(symbol: string, candles4h: Candle[]): Mod
 export function syncModelDTrailingStops(
   symbol: string,
   candles4h: Candle[],
-  wallet: PaperTradingWallet = globalPaperWallet
+  wallet?: PaperTradingWallet
 ) {
+  const activeWallet = wallet ?? getGlobalPaperWallet();
   if (candles4h.length < 6) return [];
   // Use strictly completed 4H bars (excluding active forming bar)
   const closedBars = candles4h.slice(-6, -1).map((c) => ({ low: c.low, high: c.high }));
-  return wallet.updateStructuralTrailingStop(symbol, closedBars);
+  return activeWallet.updateStructuralTrailingStop(symbol, closedBars);
 }
 
 /**
@@ -115,8 +116,9 @@ export function processModelDAutoCycle(
   candles4h: Candle[],
   context: MarketContextData,
   autoTrade: boolean = true,
-  wallet: PaperTradingWallet = globalPaperWallet
+  wallet?: PaperTradingWallet
 ): ModelDAutoExecutionResult {
+  const activeWallet = wallet ?? getGlobalPaperWallet();
   if (candles4h.length < 50) {
     throw new Error("Insufficient 4H candles for Model D auto cycle (minimum 50 required)");
   }
@@ -130,23 +132,23 @@ export function processModelDAutoCycle(
   // 3. Keep paper wallet trailing stops synchronized with the latest closed 4H candles
   // Strictly zero-lookahead: use completed 4H bars excluding active forming bar
   const closedBars = candles4h.slice(-6, -1).map((c) => ({ low: c.low, high: c.high }));
-  const updatedTrailing = wallet.updateStructuralTrailingStop(symbol, closedBars);
+  const updatedTrailing = activeWallet.updateStructuralTrailingStop(symbol, closedBars);
   const trailingUpdated = updatedTrailing.length > 0;
 
   // 4. Update market prices with latest price and check for trailing stop / stop loss / TP exits
-  const closedPositions = wallet.updateMarketPrices(symbol, telemetry.currentPrice, telemetry.atr14);
+  const closedPositions = activeWallet.updateMarketPrices(symbol, telemetry.currentPrice, telemetry.atr14);
 
   // 5. If autoTrade is enabled and signal is BUY (Model D is LONG-ONLY official baseline),
   // check if a position is already OPEN for this symbol
   let openedPosition: PaperPosition | undefined;
-  const currentPositions = wallet.getAccount().positions;
+  const currentPositions = activeWallet.getAccount().positions;
   const normSymbol = symbol.replace("/", "");
   const hasOpenPosition = currentPositions.some(
     (p) => p.asset.replace("/", "") === normSymbol && p.status === "OPEN"
   );
 
   if (autoTrade && signal.stance === "BUY" && !hasOpenPosition) {
-    openedPosition = wallet.openPositionFromSignal(
+    openedPosition = activeWallet.openPositionFromSignal(
       signal,
       1.0, // Fixed 1.0% institutional risk per Model D spec
       "MARKET",
@@ -157,7 +159,7 @@ export function processModelDAutoCycle(
     );
   }
 
-  const activePosition = wallet.getAccount().positions.find(
+  const activePosition = activeWallet.getAccount().positions.find(
     (p) => p.asset.replace("/", "") === normSymbol && p.status === "OPEN"
   );
 

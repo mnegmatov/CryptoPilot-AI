@@ -152,22 +152,30 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
             </span>
           </div>
 
-          {/* Confluence Score: strictly formatted as X/100 */}
+          {/* Confluence Score: formatted as X/100 for BUY/SHORT, or '—' for WAIT */}
           <div
             className="flex items-center space-x-1 bg-[#141A29] px-2 py-0.5 rounded border border-[#1E2638]"
-            title="Детерминированный скор сетапа (0-100)"
+            title={
+              signal.stance === "WAIT" || signal.stance === "AVOID"
+                ? "В режиме ожидания скор не применяется (сетап не сформирован)"
+                : "Детерминированный конфлюенс-скор сетапа (0-100)"
+            }
           >
             <span className="text-[10px] text-[#7B849B] font-mono">Скор:</span>
             <span
               className={`text-xs font-mono font-bold ${
-                signal.confidenceScore >= 70
+                signal.stance === "WAIT" || signal.stance === "AVOID"
+                  ? "text-[#7B849B]"
+                  : signal.confidenceScore >= 70
                   ? "text-emerald-400"
                   : signal.confidenceScore >= 50
                   ? "text-amber-400"
                   : "text-rose-400"
               }`}
             >
-              {signal.confidenceScore}/100
+              {signal.stance === "WAIT" || signal.stance === "AVOID"
+                ? "—"
+                : `${signal.confidenceScore}/100`}
             </span>
           </div>
         </div>
@@ -236,9 +244,16 @@ export const SignalDossier: React.FC<SignalDossierProps> = ({
             <span>Открыть демо-{isShort ? "Short" : "Long"}</span>
           </button>
         ) : (
-          <div className="w-full flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-md text-xs font-mono font-semibold bg-[#141A29] text-[#7B849B] border border-[#1E2638]">
-            <Info className="h-3.5 w-3.5 text-amber-400" />
-            <span>Ожидание сетапа (вход не рекомендован)</span>
+          <div className="w-full flex flex-col items-center justify-center p-2 rounded-md text-xs font-mono bg-[#141A29] text-[#7B849B] border border-[#1E2638] text-center gap-1">
+            <div className="flex items-center space-x-1.5 font-semibold text-amber-400">
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              <span>Режим ожидания (WAIT)</span>
+            </div>
+            {signal.invalidationConditions?.[0] && (
+              <span className="text-[10px] text-[#94A3B8] leading-tight">
+                {signal.invalidationConditions[0]}
+              </span>
+            )}
           </div>
         )}
       </div>

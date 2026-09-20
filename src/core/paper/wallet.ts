@@ -10,29 +10,82 @@ export class PaperTradingWallet {
   private account: PaperAccount;
   private readonly persist: boolean;
   private readonly stateFilePath: string;
+  private lastLoadedMtimeMs: number = 0;
 
-  constructor(initialBalance: number = INITIAL_BALANCE, persist: boolean = false) {
+  constructor(initialOrAccount: number | PaperAccount = INITIAL_BALANCE, persist: boolean = false) {
     this.persist = persist;
     this.stateFilePath = path.join(process.cwd(), "data", "paper_trading_state.json");
 
-    const loaded = this.persist ? this.loadState() : null;
-    if (loaded) {
-      this.account = loaded;
+    if (typeof initialOrAccount === "object" && initialOrAccount !== null) {
+      this.account = initialOrAccount;
     } else {
-      this.account = {
-        balance: initialBalance,
-        initialBalance,
-        equity: initialBalance,
-        unrealizedPnl: 0,
-        realizedPnl: 0,
-        positions: [],
-        tradeHistory: [],
-      };
+      const initialBalance = typeof initialOrAccount === "number" ? initialOrAccount : INITIAL_BALANCE;
+      if (this.persist) {
+        const loaded = this.loadState();
+        if (loaded) {
+          this.account = loaded;
+        } else {
+          this.account = {
+            balance: initialBalance,
+            initialBalance,
+            equity: initialBalance,
+            unrealizedPnl: 0,
+            realizedPnl: 0,
+            positions: [],
+            tradeHistory: [],
+          };
+          this.saveState();
+        }
+      } else {
+        this.account = {
+          balance: initialBalance,
+          initialBalance,
+          equity: initialBalance,
+          unrealizedPnl: 0,
+          realizedPnl: 0,
+          positions: [],
+          tradeHistory: [],
+        };
+      }
     }
   }
 
+  /**
+   * Rehydrates in-memory state from disk if file was touched/updated externally
+   */
+  public syncFromDisk(): boolean {
+    if (!this.persist) return false;
+    try {
+      if (fs.existsSync(this.stateFilePath)) {
+        const stat = fs.statSync(this.stateFilePath);
+        if (stat.mtimeMs > this.lastLoadedMtimeMs) {
+          const raw = fs.readFileSync(this.stateFilePath, "utf-8");
+          if (raw && raw.trim().length > 0) {
+            const parsed = JSON.parse(raw);
+            if (
+              parsed &&
+              typeof parsed.balance === "number" &&
+              typeof parsed.equity === "number" &&
+              Array.isArray(parsed.positions) &&
+              Array.isArray(parsed.tradeHistory)
+            ) {
+              this.account = parsed;
+              this.lastLoadedMtimeMs = stat.mtimeMs;
+              this.recalculateEquity(false);
+              return true;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Non-fatal, keep existing in-memory state
+    }
+    return false;
+  }
+
   public getAccount(): PaperAccount {
-    this.recalculateEquity();
+    this.syncFromDisk();
+    this.recalculateEquity(false);
     return {
       ...this.account,
       positions: [...this.account.positions],
@@ -53,7 +106,8 @@ export class PaperTradingWallet {
       swingTrailingBars?: number;
     }
   ): PaperPosition {
-    this.recalculateEquity();
+    this.syncFromDisk();
+    this.recalculateEquity(false);
 
     // Duplicate position protection
     const normAsset = signal.asset.replace("/", "");
@@ -139,7 +193,7 @@ export class PaperTradingWallet {
     };
 
     this.account.positions.push(position);
-    this.recalculateEquity();
+    this.recalculateEquity(false);
     this.saveState();
     return position;
   }
@@ -149,6 +203,7 @@ export class PaperTradingWallet {
    * handles Structural Swing / Chandelier ATR stop ratcheting / breakeven ratcheting, and executes SL / TP exits.
    */
   public updateMarketPrices(symbol: string, currentPrice: number, currentATR?: number): PaperPosition[] {
+    this.syncFromDisk();
     const closedPositions: PaperPosition[] = [];
     const normSymbol = symbol.replace("/", "");
 
@@ -276,8 +331,9 @@ export class PaperTradingWallet {
       }
     }
 
-    this.recalculateEquity();
-    if (closedPositions.length > 0) {
+    this.recalculateEquity(false);
+    // Always persist state if prices updated or positions closed
+    if (this.account.positions.length > 0 || closedPositions.length > 0) {
       this.saveState();
     }
     return closedPositions;
@@ -291,6 +347,7 @@ export class PaperTradingWallet {
     symbol: string,
     closedCandles: Array<{ low: number; high: number }>
   ): PaperPosition[] {
+    this.syncFromDisk();
     const updatedPositions: PaperPosition[] = [];
     const normSymbol = symbol.replace("/", "");
 
@@ -337,6 +394,7 @@ export class PaperTradingWallet {
    * Manually closes an open paper trade
    */
   public closePosition(positionId: string, currentPrice?: number): PaperPosition {
+    this.syncFromDisk();
     const idx = this.account.positions.findIndex((p) => p.id === positionId);
     if (idx === -1) {
       throw new Error(`Position ${positionId} not found`);
@@ -367,13 +425,13 @@ export class PaperTradingWallet {
     this.account.tradeHistory.unshift(pos);
     this.account.positions.splice(idx, 1);
 
-    this.recalculateEquity();
+    this.recalculateEquity(false);
     this.saveState();
     return pos;
   }
 
   /**
-   * Resets virtual paper trading account
+   * Resets virtual paper trading account - ONLY called upon explicit user request
    */
   public resetAccount(balance: number = INITIAL_BALANCE) {
     this.account = {
@@ -388,13 +446,16 @@ export class PaperTradingWallet {
     this.saveState();
   }
 
-  private recalculateEquity() {
+  private recalculateEquity(save: boolean = false) {
     let totalUnrealized = 0;
     for (const pos of this.account.positions) {
       totalUnrealized += pos.unrealizedPnl;
     }
     this.account.unrealizedPnl = Number(totalUnrealized.toFixed(2));
     this.account.equity = Number((this.account.balance + totalUnrealized).toFixed(2));
+    if (save) {
+      this.saveState();
+    }
   }
 
   private saveState() {
@@ -404,9 +465,14 @@ export class PaperTradingWallet {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      fs.writeFileSync(this.stateFilePath, JSON.stringify(this.account, null, 2), "utf-8");
+      // Atomic write via unique temp file and renameSync
+      const tempPath = `${this.stateFilePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+      fs.writeFileSync(tempPath, JSON.stringify(this.account, null, 2), "utf-8");
+      fs.renameSync(tempPath, this.stateFilePath);
+      const stat = fs.statSync(this.stateFilePath);
+      this.lastLoadedMtimeMs = stat.mtimeMs;
     } catch (e) {
-      // Non-fatal if filesystem is readonly or unavailable
+      console.error("Failed to persist paper trading state:", e);
     }
   }
 
@@ -414,7 +480,20 @@ export class PaperTradingWallet {
     try {
       if (fs.existsSync(this.stateFilePath)) {
         const raw = fs.readFileSync(this.stateFilePath, "utf-8");
-        return JSON.parse(raw);
+        if (raw && raw.trim().length > 0) {
+          const parsed = JSON.parse(raw);
+          if (
+            parsed &&
+            typeof parsed.balance === "number" &&
+            typeof parsed.equity === "number" &&
+            Array.isArray(parsed.positions) &&
+            Array.isArray(parsed.tradeHistory)
+          ) {
+            const stat = fs.statSync(this.stateFilePath);
+            this.lastLoadedMtimeMs = stat.mtimeMs;
+            return parsed;
+          }
+        }
       }
     } catch (e) {
       // Ignore load errors and fallback to fresh state
@@ -423,4 +502,16 @@ export class PaperTradingWallet {
   }
 }
 
-export const globalPaperWallet = new PaperTradingWallet(10000, true);
+// Ensure single authoritative in-memory instance across Next.js webpack chunks and re-renders
+const globalForPaper = globalThis as unknown as {
+  __globalPaperTradingWallet?: PaperTradingWallet;
+};
+
+export function getGlobalPaperWallet(): PaperTradingWallet {
+  if (!globalForPaper.__globalPaperTradingWallet) {
+    globalForPaper.__globalPaperTradingWallet = new PaperTradingWallet(10000, true);
+  }
+  return globalForPaper.__globalPaperTradingWallet;
+}
+
+export const globalPaperWallet = getGlobalPaperWallet();

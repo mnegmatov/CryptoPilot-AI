@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMarketCandles, getMarketContext } from "@/core/data/market-feed";
-import { processModelDAutoCycle } from "@/core/paper/model-d-tracker";
+import { PaperTradingService } from "@/core/paper/service";
 import { ApiErrorResponse } from "@/core/types";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -23,13 +30,18 @@ export async function GET(request: NextRequest) {
         code: "UPSTREAM_UNAVAILABLE",
         timestamp: Date.now(),
       };
-      return NextResponse.json(errorPayload, { status: 502 });
+      return NextResponse.json(errorPayload, { status: 502, headers: NO_CACHE_HEADERS });
     }
 
-    // Run complete Model D automated lifecycle:
-    // Indicator calculation -> Signal -> Trailing ratchet -> Live exits -> Auto-entry
-    const cycleResult = processModelDAutoCycle(symbol, candles4h, context, autoTrade);
-    const { signal, telemetry, trailingUpdated, closedPositions, openedPosition, activePosition } = cycleResult;
+    // Run complete Model D automated lifecycle with persistent Upstash/Redis locking:
+    const cycleResult = await PaperTradingService.executeModelDAutoCycle(
+      symbol,
+      candles4h,
+      context,
+      autoTrade
+    );
+    const { signal, telemetry, trailingUpdated, closedPositions, openedPosition, activePosition, skippedDuplicateCandle } =
+      cycleResult;
 
     // Deterministic narrative (No hallucinated facts)
     signal.aiExplanation = {
@@ -48,18 +60,22 @@ export async function GET(request: NextRequest) {
       executionPlan: `Вход по рынку или лимитом. Стоп: 2.5×ATR14 ($${signal.stopLoss.toLocaleString()}). Сопровождение: 5-свечной свинговый минимум без фиксированного тейка.`,
     };
 
-    return NextResponse.json({
-      success: true,
-      signal,
-      telemetry,
-      autoExecution: {
-        trailingUpdated,
-        closedPositions,
-        openedPosition,
-        activePosition,
+    return NextResponse.json(
+      {
+        success: true,
+        signal,
+        telemetry,
+        autoExecution: {
+          trailingUpdated,
+          closedPositions,
+          openedPosition,
+          activePosition,
+          skippedDuplicateCandle,
+        },
+        timestamp: Date.now(),
       },
-      timestamp: Date.now(),
-    });
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (error: any) {
     console.error(`Error generating Model D signal for ${symbol}:`, error);
     const isTimeout = error.message?.toLowerCase().includes("timeout");
@@ -72,6 +88,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(errorPayload, {
       status: isTimeout ? 504 : 502,
+      headers: NO_CACHE_HEADERS,
     });
   }
 }
