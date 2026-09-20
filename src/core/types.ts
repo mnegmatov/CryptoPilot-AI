@@ -193,6 +193,7 @@ export interface PaperPosition {
   status: "OPEN" | "CLOSED" | "PENDING";
   entryPrice: number;
   currentPrice: number;
+  exitPrice?: number;
   stopLoss: number;
   initialStopLoss?: number;
   takeProfit: number;
@@ -202,6 +203,8 @@ export interface PaperPosition {
   unrealizedPnl: number;
   unrealizedPnlPercent: number;
   realizedPnl: number;
+  openFee?: number;
+  exitFee?: number;
   openedAt: number;
   closedAt?: number;
   closeReason?: string;

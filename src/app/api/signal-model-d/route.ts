@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMarketCandles, getMarketContext } from "@/core/data/market-feed";
-import { generateModelDSignalFrom4hCandles } from "@/core/signals/generator";
-import { computeModelDTelemetry, syncModelDTrailingStops } from "@/core/paper/model-d-tracker";
+import { processModelDAutoCycle } from "@/core/paper/model-d-tracker";
 import { ApiErrorResponse } from "@/core/types";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get("symbol") || "BTCUSDT";
+  const autoTrade = searchParams.get("autoTrade") !== "false";
 
   try {
     const [candles4h, context] = await Promise.all([
@@ -26,14 +26,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(errorPayload, { status: 502 });
     }
 
-    // 1. Generate deterministic Model D signal
-    const signal = generateModelDSignalFrom4hCandles(symbol, candles4h, context);
-
-    // 2. Compute 4H telemetry (EMA20, EMA50, EMA200, Trailing levels)
-    const telemetry = computeModelDTelemetry(symbol, candles4h);
-
-    // 3. Keep paper wallet trailing stops synchronized with the latest closed 4H candles
-    syncModelDTrailingStops(symbol, candles4h);
+    // Run complete Model D automated lifecycle:
+    // Indicator calculation -> Signal -> Trailing ratchet -> Live exits -> Auto-entry
+    const cycleResult = processModelDAutoCycle(symbol, candles4h, context, autoTrade);
+    const { signal, telemetry, trailingUpdated, closedPositions, openedPosition, activePosition } = cycleResult;
 
     // Deterministic narrative (No hallucinated facts)
     signal.aiExplanation = {
@@ -56,6 +52,12 @@ export async function GET(request: NextRequest) {
       success: true,
       signal,
       telemetry,
+      autoExecution: {
+        trailingUpdated,
+        closedPositions,
+        openedPosition,
+        activePosition,
+      },
       timestamp: Date.now(),
     });
   } catch (error: any) {

@@ -3,3 +3,8 @@ node_modules
 out
 build
 .DS_Store
+data/historical/*.csv
+data/paper_trading_state.json
+research/reports/equity_curves.json
+research/reports/monte_carlo_distributions.json
+

@@ -1,0 +1,46 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-09-19T15:23:13.638Z",
+  "sourceArchive": "https://data.binance.vision / Binance REST",
+  "datasets": {
+    "BTCUSDT": {
+      "file": "BTCUSDT_4h_2021_present.csv",
+      "symbol": "BTCUSDT",
+      "timeframe": "4h",
+      "bars": 12526,
+      "sha256": "69326521f0a162dabd2a150a66ecc4bcb4f88b5af1db09351a8cb36d5bb2fc56",
+      "startDate": "2021-01-01T00:00:00.000Z",
+      "endDate": "2026-09-19T12:00:00.000Z",
+      "firstTimestamp": 1609459200000,
+      "lastTimestamp": 1789819200000,
+      "source": "https://data-api.binance.vision / Binance REST",
+      "verifiedAt": "2026-09-19T15:23:00.879Z"
+    },
+    "ETHUSDT": {
+      "file": "ETHUSDT_4h_2021_present.csv",
+      "symbol": "ETHUSDT",
+      "timeframe": "4h",
+      "bars": 12526,
+      "sha256": "873e58639203e845c4e8cd29b87fe2ce500d58fe67d4b1cbbe00eff05e24c974",
+      "startDate": "2021-01-01T00:00:00.000Z",
+      "endDate": "2026-09-19T12:00:00.000Z",
+      "firstTimestamp": 1609459200000,
+      "lastTimestamp": 1789819200000,
+      "source": "https://data-api.binance.vision / Binance REST",
+      "verifiedAt": "2026-09-19T15:23:07.161Z"
+    },
+    "SOLUSDT": {
+      "file": "SOLUSDT_4h_2021_present.csv",
+      "symbol": "SOLUSDT",
+      "timeframe": "4h",
+      "bars": 13258,
+      "sha256": "879d19485811b287b75d865c43b5893322a6048785198f7d3d3559202219699e",
+      "startDate": "2020-09-01T00:00:00.000Z",
+      "endDate": "2026-09-19T12:00:00.000Z",
+      "firstTimestamp": 1598918400000,
+      "lastTimestamp": 1789819200000,
+      "source": "https://data-api.binance.vision / Binance REST",
+      "verifiedAt": "2026-09-19T15:23:13.638Z"
+    }
+  }
+}

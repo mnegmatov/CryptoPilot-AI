@@ -56,10 +56,24 @@ export const PaperTradingView: React.FC = () => {
   const fetchModelD = async (symbol: string) => {
     setLoadingModelD(true);
     try {
-      const res = await fetch(`/api/signal-model-d?symbol=${symbol}`);
+      const res = await fetch(`/api/signal-model-d?symbol=${symbol}&autoTrade=true`);
       const data = await res.json();
       if (data.success) {
         setModelDData(data);
+        if (data.autoExecution?.openedPosition) {
+          toast.success(
+            `Model D Авто-вход: открыт Long по $${data.autoExecution.openedPosition.entryPrice.toLocaleString()} (Риск 1.0%)`
+          );
+          fetchAccount();
+        }
+        if (data.autoExecution?.closedPositions?.length > 0) {
+          data.autoExecution.closedPositions.forEach((cp: any) => {
+            toast.info(
+              `Model D Авто-выход: ${cp.closeReason} по $${(cp.exitPrice ?? cp.currentPrice).toLocaleString()} (PnL: ${cp.realizedPnl >= 0 ? "+" : ""}$${cp.realizedPnl})`
+            );
+          });
+          fetchAccount();
+        }
       } else {
         console.warn("Model D fetch warning:", data.error);
       }
@@ -218,6 +232,10 @@ export const PaperTradingView: React.FC = () => {
                 </span>
                 <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
                   GRADE B+ VALIDATED
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center space-x-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>AUTO-EXECUTION ACTIVE</span>
                 </span>
               </div>
               <p className="text-xs text-[#94A3B8] mt-1.5">
@@ -597,7 +615,9 @@ export const PaperTradingView: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-3 text-white">${h.entryPrice.toLocaleString()}</td>
-                      <td className="p-3 text-white">${h.currentPrice.toLocaleString()}</td>
+                      <td className="p-3 text-white">
+                        ${(h.exitPrice ?? h.currentPrice).toLocaleString()}
+                      </td>
                       <td
                         className={`p-3 font-bold ${
                           h.realizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"

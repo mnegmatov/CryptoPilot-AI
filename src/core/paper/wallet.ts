@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { PaperAccount, PaperPosition, TradingSignal } from "../types";
 
 const INITIAL_BALANCE = 10000;
@@ -6,22 +8,36 @@ const SLIPPAGE_RATE = 0.0005; // 0.05%
 
 export class PaperTradingWallet {
   private account: PaperAccount;
+  private readonly persist: boolean;
+  private readonly stateFilePath: string;
 
-  constructor(initialBalance: number = INITIAL_BALANCE) {
-    this.account = {
-      balance: initialBalance,
-      initialBalance,
-      equity: initialBalance,
-      unrealizedPnl: 0,
-      realizedPnl: 0,
-      positions: [],
-      tradeHistory: [],
-    };
+  constructor(initialBalance: number = INITIAL_BALANCE, persist: boolean = false) {
+    this.persist = persist;
+    this.stateFilePath = path.join(process.cwd(), "data", "paper_trading_state.json");
+
+    const loaded = this.persist ? this.loadState() : null;
+    if (loaded) {
+      this.account = loaded;
+    } else {
+      this.account = {
+        balance: initialBalance,
+        initialBalance,
+        equity: initialBalance,
+        unrealizedPnl: 0,
+        realizedPnl: 0,
+        positions: [],
+        tradeHistory: [],
+      };
+    }
   }
 
   public getAccount(): PaperAccount {
     this.recalculateEquity();
-    return { ...this.account };
+    return {
+      ...this.account,
+      positions: [...this.account.positions],
+      tradeHistory: [...this.account.tradeHistory],
+    };
   }
 
   /**
@@ -38,6 +54,15 @@ export class PaperTradingWallet {
     }
   ): PaperPosition {
     this.recalculateEquity();
+
+    // Duplicate position protection
+    const normAsset = signal.asset.replace("/", "");
+    const existing = this.account.positions.find(
+      (p) => p.asset.replace("/", "") === normAsset && p.status === "OPEN"
+    );
+    if (existing) {
+      throw new Error(`Position for ${signal.asset} is already open (id: ${existing.id})`);
+    }
 
     const isShort = signal.stance === "SHORT" || signal.type === "SHORT";
     const posType: "LONG" | "SHORT" = isShort ? "SHORT" : "LONG";
@@ -67,8 +92,8 @@ export class PaperTradingWallet {
       throw new Error("Insufficient virtual margin balance to open this position");
     }
 
-    this.account.balance -= openFee;
-    this.account.realizedPnl -= openFee;
+    this.account.balance = Number((this.account.balance - openFee).toFixed(2));
+    this.account.realizedPnl = Number((this.account.balance - this.account.initialBalance).toFixed(2));
 
     const isModelD = signal.strategyVersion === "MODEL_D";
     // Model D has NO fixed Take Profit (exits strictly by trailing stop)
@@ -83,7 +108,7 @@ export class PaperTradingWallet {
       : "CHANDELIER_ATR";
 
     const position: PaperPosition = {
-      id: `pos_${signal.asset}_${Date.now()}`,
+      id: `pos_${signal.asset.replace("/", "")}_${Date.now()}`,
       signalId: signal.id,
       asset: signal.asset,
       type: posType,
@@ -92,6 +117,7 @@ export class PaperTradingWallet {
       currentPrice: entryPrice,
       stopLoss,
       initialStopLoss: stopLoss,
+      trailingStopPrice: isModelD ? stopLoss : undefined,
       takeProfit: defaultTP,
       sizeUnits,
       notionalValue,
@@ -99,6 +125,7 @@ export class PaperTradingWallet {
       unrealizedPnl: 0,
       unrealizedPnlPercent: 0,
       realizedPnl: -openFee,
+      openFee,
       openedAt: Date.now(),
       tp1Hit: false,
       breakevenMoved: false,
@@ -113,6 +140,7 @@ export class PaperTradingWallet {
 
     this.account.positions.push(position);
     this.recalculateEquity();
+    this.saveState();
     return position;
   }
 
@@ -122,10 +150,11 @@ export class PaperTradingWallet {
    */
   public updateMarketPrices(symbol: string, currentPrice: number, currentATR?: number): PaperPosition[] {
     const closedPositions: PaperPosition[] = [];
+    const normSymbol = symbol.replace("/", "");
 
     for (let i = this.account.positions.length - 1; i >= 0; i--) {
       const pos = this.account.positions[i];
-      if (pos.asset !== symbol && pos.asset.replace("/", "") !== symbol.replace("/", "")) {
+      if (pos.asset.replace("/", "") !== normSymbol) {
         continue;
       }
 
@@ -153,13 +182,15 @@ export class PaperTradingWallet {
           const slice = pos.recentCandles.slice(-barsToUse);
           if (pos.type === "LONG") {
             const swingLow = Math.min(...slice.map((c) => c.low));
-            if (swingLow > pos.stopLoss) {
+            const effectiveStop = Math.max(pos.stopLoss, pos.trailingStopPrice ?? 0, pos.initialStopLoss ?? 0);
+            if (swingLow > effectiveStop) {
               pos.stopLoss = Number(swingLow.toFixed(2));
               pos.trailingStopPrice = pos.stopLoss;
             }
           } else {
             const swingHigh = Math.max(...slice.map((c) => c.high));
-            if (swingHigh < pos.stopLoss) {
+            const effectiveStop = Math.min(pos.stopLoss, pos.trailingStopPrice ?? Infinity, pos.initialStopLoss ?? Infinity);
+            if (swingHigh < effectiveStop) {
               pos.stopLoss = Number(swingHigh.toFixed(2));
               pos.trailingStopPrice = pos.stopLoss;
             }
@@ -169,14 +200,12 @@ export class PaperTradingWallet {
         const mult = pos.chandelierMultiplier ?? 2.5;
         if (pos.type === "LONG") {
           const chandelierStop = Number((pos.highestHigh! - mult * currentATR).toFixed(2));
-          // Never move downward, never widen beyond initial stop loss
           if (chandelierStop > pos.stopLoss) {
             pos.stopLoss = chandelierStop;
             pos.trailingStopPrice = chandelierStop;
           }
         } else {
           const chandelierStop = Number((pos.lowestLow! + mult * currentATR).toFixed(2));
-          // Never move upward, never widen beyond initial stop loss
           if (chandelierStop < pos.stopLoss) {
             pos.stopLoss = chandelierStop;
             pos.trailingStopPrice = chandelierStop;
@@ -206,10 +235,22 @@ export class PaperTradingWallet {
         const exitFee = Number((currentPrice * pos.sizeUnits * TAKER_FEE_RATE).toFixed(2));
         pos.status = "CLOSED";
         pos.closedAt = Date.now();
-        pos.closeReason = (pos.trailingStopPrice !== undefined || pos.breakevenMoved || (pos.initialStopLoss !== undefined && pos.stopLoss !== pos.initialStopLoss)) ? "TRAILING_STOP_HIT" : "STOP_LOSS_HIT";
-        pos.realizedPnl = pos.unrealizedPnl - exitFee;
-        this.account.balance += pos.realizedPnl;
-        this.account.realizedPnl += pos.realizedPnl;
+        pos.exitPrice = currentPrice;
+        pos.exitFee = exitFee;
+
+        const isTrailing =
+          (pos.trailingStopPrice !== undefined && pos.stopLoss > (pos.initialStopLoss ?? 0)) ||
+          pos.breakevenMoved;
+        pos.closeReason = isTrailing ? "TRAILING_STOP_HIT" : "STOP_LOSS_HIT";
+
+        const grossCashPnl = priceDiff * pos.sizeUnits;
+        pos.realizedPnl = Number((grossCashPnl - (pos.openFee ?? 0) - exitFee).toFixed(2));
+        pos.unrealizedPnl = 0;
+        pos.unrealizedPnlPercent = 0;
+
+        this.account.balance = Number((this.account.balance + grossCashPnl - exitFee).toFixed(2));
+        this.account.realizedPnl = Number((this.account.balance - this.account.initialBalance).toFixed(2));
+
         this.account.tradeHistory.unshift(pos);
         this.account.positions.splice(i, 1);
         closedPositions.push(pos);
@@ -217,10 +258,18 @@ export class PaperTradingWallet {
         const exitFee = Number((currentPrice * pos.sizeUnits * TAKER_FEE_RATE).toFixed(2));
         pos.status = "CLOSED";
         pos.closedAt = Date.now();
+        pos.exitPrice = currentPrice;
+        pos.exitFee = exitFee;
         pos.closeReason = "TAKE_PROFIT_HIT";
-        pos.realizedPnl = pos.unrealizedPnl - exitFee;
-        this.account.balance += pos.realizedPnl;
-        this.account.realizedPnl += pos.realizedPnl;
+
+        const grossCashPnl = priceDiff * pos.sizeUnits;
+        pos.realizedPnl = Number((grossCashPnl - (pos.openFee ?? 0) - exitFee).toFixed(2));
+        pos.unrealizedPnl = 0;
+        pos.unrealizedPnlPercent = 0;
+
+        this.account.balance = Number((this.account.balance + grossCashPnl - exitFee).toFixed(2));
+        this.account.realizedPnl = Number((this.account.balance - this.account.initialBalance).toFixed(2));
+
         this.account.tradeHistory.unshift(pos);
         this.account.positions.splice(i, 1);
         closedPositions.push(pos);
@@ -228,6 +277,9 @@ export class PaperTradingWallet {
     }
 
     this.recalculateEquity();
+    if (closedPositions.length > 0) {
+      this.saveState();
+    }
     return closedPositions;
   }
 
@@ -240,9 +292,10 @@ export class PaperTradingWallet {
     closedCandles: Array<{ low: number; high: number }>
   ): PaperPosition[] {
     const updatedPositions: PaperPosition[] = [];
+    const normSymbol = symbol.replace("/", "");
 
     for (const pos of this.account.positions) {
-      if (pos.asset !== symbol && pos.asset.replace("/", "") !== symbol.replace("/", "")) {
+      if (pos.asset.replace("/", "") !== normSymbol) {
         continue;
       }
       if (pos.trailingStopType !== "STRUCTURAL_SWING") {
@@ -256,14 +309,16 @@ export class PaperTradingWallet {
       if (slice.length > 0) {
         if (pos.type === "LONG") {
           const swingLow = Math.min(...slice.map((c) => c.low));
-          if (swingLow > pos.stopLoss) {
+          const effectiveStop = Math.max(pos.stopLoss, pos.trailingStopPrice ?? 0, pos.initialStopLoss ?? 0);
+          if (swingLow > effectiveStop) {
             pos.stopLoss = Number(swingLow.toFixed(2));
             pos.trailingStopPrice = pos.stopLoss;
             updatedPositions.push(pos);
           }
         } else {
           const swingHigh = Math.max(...slice.map((c) => c.high));
-          if (swingHigh < pos.stopLoss) {
+          const effectiveStop = Math.min(pos.stopLoss, pos.trailingStopPrice ?? Infinity, pos.initialStopLoss ?? Infinity);
+          if (swingHigh < effectiveStop) {
             pos.stopLoss = Number(swingHigh.toFixed(2));
             pos.trailingStopPrice = pos.stopLoss;
             updatedPositions.push(pos);
@@ -272,6 +327,9 @@ export class PaperTradingWallet {
       }
     }
 
+    if (updatedPositions.length > 0) {
+      this.saveState();
+    }
     return updatedPositions;
   }
 
@@ -287,6 +345,7 @@ export class PaperTradingWallet {
     const pos = this.account.positions[idx];
     const finalPrice = currentPrice ?? pos.currentPrice;
     pos.currentPrice = finalPrice;
+    pos.exitPrice = finalPrice;
     pos.status = "CLOSED";
     pos.closedAt = Date.now();
     pos.closeReason = "MANUAL_CLOSE";
@@ -296,16 +355,20 @@ export class PaperTradingWallet {
       : pos.entryPrice - finalPrice;
 
     const exitFee = Number((finalPrice * pos.sizeUnits * TAKER_FEE_RATE).toFixed(2));
-    pos.realizedPnl = Number((priceDiff * pos.sizeUnits - exitFee).toFixed(2));
+    pos.exitFee = exitFee;
+    const grossCashPnl = priceDiff * pos.sizeUnits;
+    pos.realizedPnl = Number((grossCashPnl - (pos.openFee ?? 0) - exitFee).toFixed(2));
     pos.unrealizedPnl = 0;
     pos.unrealizedPnlPercent = 0;
 
-    this.account.balance += pos.realizedPnl;
-    this.account.realizedPnl += pos.realizedPnl;
+    this.account.balance = Number((this.account.balance + grossCashPnl - exitFee).toFixed(2));
+    this.account.realizedPnl = Number((this.account.balance - this.account.initialBalance).toFixed(2));
+
     this.account.tradeHistory.unshift(pos);
     this.account.positions.splice(idx, 1);
 
     this.recalculateEquity();
+    this.saveState();
     return pos;
   }
 
@@ -322,6 +385,7 @@ export class PaperTradingWallet {
       positions: [],
       tradeHistory: [],
     };
+    this.saveState();
   }
 
   private recalculateEquity() {
@@ -332,6 +396,31 @@ export class PaperTradingWallet {
     this.account.unrealizedPnl = Number(totalUnrealized.toFixed(2));
     this.account.equity = Number((this.account.balance + totalUnrealized).toFixed(2));
   }
+
+  private saveState() {
+    if (!this.persist) return;
+    try {
+      const dir = path.dirname(this.stateFilePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(this.stateFilePath, JSON.stringify(this.account, null, 2), "utf-8");
+    } catch (e) {
+      // Non-fatal if filesystem is readonly or unavailable
+    }
+  }
+
+  private loadState(): PaperAccount | null {
+    try {
+      if (fs.existsSync(this.stateFilePath)) {
+        const raw = fs.readFileSync(this.stateFilePath, "utf-8");
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      // Ignore load errors and fallback to fresh state
+    }
+    return null;
+  }
 }
 
-export const globalPaperWallet = new PaperTradingWallet(10000);
+export const globalPaperWallet = new PaperTradingWallet(10000, true);
