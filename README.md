@@ -10,17 +10,38 @@ It combines **real-time deterministic market telemetry**, **quantitative technic
 
 1. **Zero Invented Data**: AI is **never** the source of raw market data. All prices, volumes, and indicators are fetched and calculated deterministically from real exchange APIs.
 2. **Decoupled Architecture**: Strict separation between Data Ingestion, Quantitative Analysis, Signal Generation, Risk Management, Backtesting, Paper Trading, and AI Explanation.
-3. **Safety First**: No real-money trading in initial versions. Mandatory backtesting and paper trading with fee and slippage modeling.
+3. **Safety First**: **No real-money trading**. Mandatory backtesting and **paper trading only**.
 4. **Institutional Trading Standards**: Every setup produces:
    - **BUY / WAIT / AVOID**
    - **Asset & Real Price**
    - **Entry Range (Min, Max, Ideal Pullback)**
    - **Stop Loss (ATR buffer + structural swing invalidation)**
-   - **Take Profit targets (TP1, TP2, TP3) with Risk/Reward metrics**
    - **Confidence Score (0-100)**
    - **Explicit Invalidation Conditions**
    - **Technical Analysis & Macro Market Context**
    - **AI Institutional Thesis & Execution Guidance**
+
+---
+
+## 🤖 Model D Automatic Paper-Trading Architecture
+
+Model D is our frozen, quantitative trend-following strategy. It automatically trades paper equity with the following architecture:
+
+- **Hosting**: Vercel hosts the Next.js application and API.
+- **Persistence**: Upstash Redis stores production paper-trading state.
+- **Scheduler**: GitHub Actions triggers Model D every 10 minutes via a cron workflow (`*/10 * * * *`).
+- **Endpoint**: `/api/cron/model-d` is the execution endpoint.
+- **Security**: The `CRON_SECRET` repository secret protects the endpoint.
+- **Universe**: BTCUSDT, ETHUSDT, and SOLUSDT are the validated Model D universe.
+
+**Model D Frozen Rules (Infrastructure Only, No Performance Guarantees):**
+- **Timeframe**: 4H
+- **Market Trend**: Close > EMA200, EMA20 > EMA50
+- **Entry**: Low <= EMA20, Close > EMA20
+- **Stop Loss**: 2.5 × ATR(14)
+- **Trailing**: Structural swing trailing
+- **Risk**: 1% of paper equity per trade
+- **Take Profit**: No fixed Take Profit (exits only on trailing stop loss)
 
 ---
 
@@ -36,8 +57,10 @@ From [`emilkowalski/skills`](https://github.com/emilkowalski/skills.git):
 
 ### Tech Stack
 - **Framework**: Next.js 15 (App Router) + React 19 + TypeScript.
+- **Database**: Upstash Redis (Serverless KV store).
+- **Automation**: GitHub Actions.
 - **Styling**: Tailwind CSS with custom institutional dark-mode terminal palette.
-- **Charts**: TradingView `lightweight-charts` (60fps canvas-rendered candlesticks with entry, stop loss, and TP target line overlays).
+- **Charts**: TradingView `lightweight-charts`.
 - **Command Palette**: `cmdk` (⌘K asset search).
 - **Notifications**: `sonner`.
 - **Validation**: `zod`.
@@ -66,6 +89,7 @@ src/
 │   ├── api/
 │   │   ├── backtest/route.ts      # Vectorized historical backtest simulation
 │   │   ├── candles/route.ts       # Real historical OHLCV candles
+│   │   ├── cron/model-d/route.ts  # Model D execution endpoint (triggered by GitHub Actions)
 │   │   ├── market/route.ts        # Live watchlist tickers & macro context
 │   │   ├── paper/route.ts         # Paper trading wallet operations
 │   │   └── signal/route.ts        # Deterministic signal & AI thesis generation
@@ -95,6 +119,7 @@ src/
 │   │   ├── market-feed.ts         # Unified market feed & validation
 │   │   └── sentiment.ts           # Alternative.me Fear & Greed client
 │   ├── paper/
+│   │   ├── storage.ts             # Upstash Redis state persistence
 │   │   └── wallet.ts              # Paper trading virtual account & order manager
 │   ├── quant/
 │   │   ├── indicators.ts          # EMA, SMA, RSI, MACD, ATR, Bollinger, VWAP
@@ -136,9 +161,13 @@ npm run build
 npm start
 ```
 
-### 5. Optional: Enable Gemini AI Explanations
-Create a `.env.local` file:
-```env
-GEMINI_API_KEY="your_api_key_here"
-```
-*(Note: If no API key is provided, the platform automatically utilizes its built-in deterministic quantitative narrative engine without breaking).*
+### 5. Environment Variables Configuration
+To run the platform securely and reliably:
+- `UPSTASH_REDIS_REST_URL`: Provided by Upstash (Required in production)
+- `UPSTASH_REDIS_REST_TOKEN`: Provided by Upstash (Required in production)
+- `CRON_SECRET`: Random secure string (Required in production to authorize Model D)
+- `GEMINI_API_KEY`: (Optional) AI thesis generation
+
+To configure the scheduler in GitHub Actions, navigate to **Settings → Secrets and variables → Actions** and add:
+- Secret: `CRON_SECRET`
+- Variable: `MODEL_D_CRON_URL` (e.g., `https://<your-vercel-domain>/api/cron/model-d`)
