@@ -385,17 +385,146 @@ describe("Model Breakout V2-AD — Paper Trading Test Suite", () => {
     expect(reloaded.positions[0].asset).toBe("SOLUSDT");
   });
 
-  // 16. Redis failure
-  it("16. Redis failure handling: falls back to local file storage gracefully", async () => {
-    const failingRedisMock = {
-      get: vi.fn().mockRejectedValue(new Error("Redis connection refused")),
-      set: vi.fn().mockRejectedValue(new Error("Redis connection refused")),
-    };
-    setCustomBreakoutRedisClient(failingRedisMock as any);
+  // 16. Storage Error Handling: Production Redis strictness vs Development fallback (A-F)
+  it("16-A. Production + missing Redis config throws explicit Error", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    setCustomBreakoutRedisClient(null);
 
-    const account = await BreakoutStorageService.loadAccount();
-    expect(account).toBeDefined();
-    expect(account.initialBalance).toBe(10000);
+    try {
+      await expect(BreakoutStorageService.loadAccount()).rejects.toThrow(
+        /Production Configuration Error/
+      );
+      await expect(BreakoutStorageService.acquireLock()).rejects.toThrow(
+        /Production Configuration Error/
+      );
+      await expect(BreakoutStorageService.saveAccount(createInitialBreakoutAccount())).rejects.toThrow(
+        /Production Configuration Error/
+      );
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("16-B. Production + Redis get failure throws explicit error without resetting account", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const failingRedis = {
+      get: vi.fn().mockRejectedValue(new Error("Connection timeout to Upstash")),
+      set: vi.fn(),
+    };
+    setCustomBreakoutRedisClient(failingRedis as any);
+
+    try {
+      await expect(BreakoutStorageService.loadAccount()).rejects.toThrow(
+        /Upstash Redis error reading Breakout paper account: Connection timeout to Upstash/
+      );
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("16-C. Production + Redis set failure throws explicit error", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const failingRedis = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockRejectedValue(new Error("Redis quota exceeded")),
+    };
+    setCustomBreakoutRedisClient(failingRedis as any);
+
+    try {
+      await expect(BreakoutStorageService.saveAccount(createInitialBreakoutAccount())).rejects.toThrow(
+        /Upstash Redis error saving Breakout paper account: Redis quota exceeded/
+      );
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("16-D. Production + lock failure throws explicit error", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const failingRedis = {
+      set: vi.fn().mockRejectedValue(new Error("Redis lock network failure")),
+      get: vi.fn(),
+    };
+    setCustomBreakoutRedisClient(failingRedis as any);
+
+    try {
+      await expect(BreakoutStorageService.acquireLock()).rejects.toThrow(
+        /Upstash Redis error acquiring Breakout lock: Redis lock network failure/
+      );
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("16-E. Development + no Redis allows local file fallback", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origVercel = process.env.VERCEL;
+    process.env.NODE_ENV = "test";
+    delete process.env.VERCEL;
+    setCustomBreakoutRedisClient(null);
+
+    try {
+      const account = await BreakoutStorageService.loadAccount();
+      expect(account).toBeDefined();
+      expect(account.initialBalance).toBe(10000);
+
+      const unlock = await BreakoutStorageService.acquireLock();
+      expect(typeof unlock).toBe("function");
+      await unlock();
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origVercel) process.env.VERCEL = origVercel;
+    }
+  });
+
+  it("16-F. Normal Redis production path works cleanly", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const mockStorage = new Map<string, any>();
+    const workingRedis = {
+      get: vi.fn().mockImplementation(async (key: string) => mockStorage.get(key) || null),
+      set: vi.fn().mockImplementation(async (key: string, val: any) => {
+        mockStorage.set(key, val);
+        return "OK";
+      }),
+      del: vi.fn().mockImplementation(async (key: string) => {
+        mockStorage.delete(key);
+        return 1;
+      }),
+      lpush: vi.fn().mockResolvedValue(1),
+      ltrim: vi.fn().mockResolvedValue("OK"),
+      lrange: vi.fn().mockResolvedValue([]),
+    };
+    setCustomBreakoutRedisClient(workingRedis as any);
+
+    try {
+      const unlock = await BreakoutStorageService.acquireLock();
+      expect(workingRedis.set).toHaveBeenCalledWith(
+        "cryptopilot:paper:breakout:lock",
+        expect.any(String),
+        expect.objectContaining({ nx: true, ex: 10 })
+      );
+
+      const account = await BreakoutStorageService.loadAccount();
+      expect(account.initialBalance).toBe(10000);
+
+      account.equity = 10500;
+      await BreakoutStorageService.saveAccount(account);
+      expect(workingRedis.set).toHaveBeenCalledWith(
+        "cryptopilot:paper:breakout:v1",
+        expect.stringContaining("10500")
+      );
+
+      await unlock();
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
   });
 
   // 17. Binance data failure

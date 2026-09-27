@@ -16,6 +16,10 @@ export function setCustomBreakoutRedisClient(client: Redis | null | undefined) {
   customRedisClient = client;
 }
 
+export function isProductionEnvironment(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+}
+
 export function getBreakoutRedisClient(): Redis | null {
   if (customRedisClient !== undefined) {
     return customRedisClient;
@@ -35,7 +39,7 @@ export function getBreakoutStoreBackend(): "redis" | "file" {
     return "redis";
   }
 
-  if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
+  if (isProductionEnvironment()) {
     throw new Error(
       "Production Configuration Error: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be configured in Vercel environment variables."
     );
@@ -150,12 +154,20 @@ function saveLocalSnapshot(snapshot: BreakoutSnapshot): void {
 
 export class BreakoutStorageService {
   /**
-   * Distributed lock acquisition using NX & EX
+   * Distributed lock acquisition using NX & EX in Redis.
+   * In production, Redis lock is strictly required.
    */
   static async acquireLock(): Promise<() => Promise<void>> {
+    const isProd = isProductionEnvironment();
     const redis = getBreakoutRedisClient();
 
     if (!redis) {
+      if (isProd) {
+        throw new Error(
+          "Production Configuration Error: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be configured in Vercel environment variables."
+        );
+      }
+
       let unlockNext: () => void = () => {};
       const currentLock = localLockPromise;
       localLockPromise = new Promise<void>((resolve) => {
@@ -171,22 +183,29 @@ export class BreakoutStorageService {
     const startTime = Date.now();
 
     while (Date.now() - startTime < LOCK_ACQUIRE_TIMEOUT_MS) {
-      const acquired = await redis.set(BREAKOUT_LOCK_KEY, lockId, {
-        nx: true,
-        ex: LOCK_TTL_SECONDS,
-      });
+      try {
+        const acquired = await redis.set(BREAKOUT_LOCK_KEY, lockId, {
+          nx: true,
+          ex: LOCK_TTL_SECONDS,
+        });
 
-      if (acquired === "OK") {
-        return async () => {
-          try {
-            const current = await redis.get(BREAKOUT_LOCK_KEY);
-            if (current === lockId) {
-              await redis.del(BREAKOUT_LOCK_KEY);
+        if (acquired === "OK") {
+          return async () => {
+            try {
+              const current = await redis.get(BREAKOUT_LOCK_KEY);
+              if (current === lockId) {
+                await redis.del(BREAKOUT_LOCK_KEY);
+              }
+            } catch (err) {
+              console.error("Error releasing Breakout Redis lock:", err);
             }
-          } catch (err) {
-            console.error("Error releasing Breakout Redis lock:", err);
-          }
-        };
+          };
+        }
+      } catch (err: any) {
+        if (isProd) {
+          throw new Error(`Upstash Redis error acquiring Breakout lock: ${err.message}`);
+        }
+        console.warn("Redis lock acquire attempt warning:", err);
       }
 
       await new Promise((r) => setTimeout(r, 150));
@@ -196,48 +215,70 @@ export class BreakoutStorageService {
   }
 
   /**
-   * Loads current Breakout paper account
+   * Loads current Breakout paper account.
+   * In production, Redis is strictly required; never falls back to blank account on error.
    */
   static async loadAccount(): Promise<BreakoutAccount> {
+    const isProd = isProductionEnvironment();
     const redis = getBreakoutRedisClient();
+
     if (!redis) {
+      if (isProd) {
+        throw new Error(
+          "Production Configuration Error: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be configured in Vercel environment variables."
+        );
+      }
       return loadLocalFileAccount();
     }
 
     try {
-      const data = await redis.get<BreakoutAccount>(BREAKOUT_STORAGE_KEY);
+      const data = await redis.get<BreakoutAccount | string>(BREAKOUT_STORAGE_KEY);
       if (!data) {
         const initial = createInitialBreakoutAccount();
-        await redis.set(BREAKOUT_STORAGE_KEY, initial);
+        await redis.set(BREAKOUT_STORAGE_KEY, JSON.stringify(initial));
         return initial;
       }
-      if (!data.lastProcessedCandles) data.lastProcessedCandles = {};
-      if (!data.lastExitTimestamps) data.lastExitTimestamps = {};
-      if (!data.stats) data.stats = createInitialBreakoutAccount().stats;
-      return data;
-    } catch (error) {
+      const account: BreakoutAccount = typeof data === "string" ? JSON.parse(data) : data;
+      if (!account.lastProcessedCandles) account.lastProcessedCandles = {};
+      if (!account.lastExitTimestamps) account.lastExitTimestamps = {};
+      if (!account.stats) account.stats = createInitialBreakoutAccount().stats;
+      return account;
+    } catch (error: any) {
+      if (isProd) {
+        throw new Error(`Upstash Redis error reading Breakout paper account: ${error.message}`);
+      }
       console.error("Error loading Breakout account from Redis, falling back to local file:", error);
       return loadLocalFileAccount();
     }
   }
 
   /**
-   * Saves Breakout paper account with optimistic concurrency control
+   * Saves Breakout paper account with optimistic concurrency control.
+   * In production, Redis is strictly required.
    */
   static async saveAccount(account: BreakoutAccount): Promise<void> {
+    const isProd = isProductionEnvironment();
     const redis = getBreakoutRedisClient();
 
     account.lastUpdated = Date.now();
     account.version += 1;
 
     if (!redis) {
+      if (isProd) {
+        throw new Error(
+          "Production Configuration Error: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be configured in Vercel environment variables."
+        );
+      }
       saveLocalFileAccount(account);
       return;
     }
 
     try {
-      await redis.set(BREAKOUT_STORAGE_KEY, account);
-    } catch (error) {
+      await redis.set(BREAKOUT_STORAGE_KEY, JSON.stringify(account));
+    } catch (error: any) {
+      if (isProd) {
+        throw new Error(`Upstash Redis error saving Breakout paper account: ${error.message}`);
+      }
       console.error("Error saving Breakout account to Redis, saving local copy:", error);
       saveLocalFileAccount(account);
       throw error;
@@ -245,11 +286,19 @@ export class BreakoutStorageService {
   }
 
   /**
-   * Appends a telemetry snapshot
+   * Appends a telemetry snapshot.
+   * In production, Redis is strictly required.
    */
   static async saveSnapshot(snapshot: BreakoutSnapshot): Promise<void> {
+    const isProd = isProductionEnvironment();
     const redis = getBreakoutRedisClient();
+
     if (!redis) {
+      if (isProd) {
+        throw new Error(
+          "Production Configuration Error: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be configured in Vercel environment variables."
+        );
+      }
       saveLocalSnapshot(snapshot);
       return;
     }
@@ -258,18 +307,29 @@ export class BreakoutStorageService {
       // Store in Redis list, cap at 1,000 items
       await redis.lpush(BREAKOUT_SNAPSHOTS_KEY, JSON.stringify(snapshot));
       await redis.ltrim(BREAKOUT_SNAPSHOTS_KEY, 0, 999);
-    } catch (error) {
+    } catch (error: any) {
+      if (isProd) {
+        throw new Error(`Upstash Redis error saving Breakout snapshot: ${error.message}`);
+      }
       console.error("Error saving Breakout snapshot to Redis, falling back to local file:", error);
       saveLocalSnapshot(snapshot);
     }
   }
 
   /**
-   * Retrieves snapshots
+   * Retrieves snapshots.
+   * In production, Redis is strictly required.
    */
   static async getSnapshots(limit: number = 100): Promise<BreakoutSnapshot[]> {
+    const isProd = isProductionEnvironment();
     const redis = getBreakoutRedisClient();
+
     if (!redis) {
+      if (isProd) {
+        throw new Error(
+          "Production Configuration Error: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be configured in Vercel environment variables."
+        );
+      }
       const local = loadLocalSnapshots();
       return local.slice(-limit);
     }
@@ -277,7 +337,10 @@ export class BreakoutStorageService {
     try {
       const raw = await redis.lrange(BREAKOUT_SNAPSHOTS_KEY, 0, limit - 1);
       return raw.map((item) => (typeof item === "string" ? JSON.parse(item) : item)).reverse();
-    } catch (error) {
+    } catch (error: any) {
+      if (isProd) {
+        throw new Error(`Upstash Redis error reading Breakout snapshots: ${error.message}`);
+      }
       console.error("Error fetching Breakout snapshots from Redis, reading local:", error);
       return loadLocalSnapshots().slice(-limit);
     }
