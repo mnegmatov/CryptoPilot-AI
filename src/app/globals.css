@@ -68,3 +68,12 @@ body {
   height: calc(100vh - 4rem);
   height: calc(100dvh - 4rem);
 }
+
+/* Hide scrollbars for clean mobile touch sliders and tabs */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

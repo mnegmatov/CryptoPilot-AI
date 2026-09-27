@@ -92,25 +92,25 @@ export const BacktestView: React.FC<BacktestViewProps> = ({
   };
 
   return (
-    <div className="flex-1 bg-[#0B0E14] flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
+    <div className="flex-1 bg-[#0B0E14] flex flex-col h-[calc(100vh-4rem)] overflow-y-auto w-full max-w-full min-w-0">
       {/* Top Controls Bar */}
-      <div className="p-5 border-b border-[#1E2638] bg-[#0E131F] space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="p-3.5 sm:p-5 border-b border-[#1E2638] bg-[#0E131F] space-y-3 sm:space-y-4 w-full max-w-full min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           <div>
-            <h2 className="text-base font-bold text-white flex items-center space-x-2">
-              <BarChart2 className="h-4 w-4 text-sky-400" />
+            <h2 className="text-sm sm:text-base font-bold text-white flex items-center space-x-2">
+              <BarChart2 className="h-4 w-4 text-sky-400 shrink-0" />
               <span>Исследовательский движок бэктестинга</span>
             </h2>
-            <p className="text-xs text-[#7B849B]">
+            <p className="text-xs text-[#7B849B] mt-0.5 leading-relaxed">
               Двунаправленная симуляция walk-forward с консервативной моделью исполнения и без заглядывания вперед
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto shrink-0">
             <select
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
-              className="bg-[#141A29] border border-[#1E2638] text-xs text-white rounded-lg px-3 py-2 font-mono"
+              className="min-h-[44px] bg-[#141A29] border border-[#1E2638] text-xs text-white rounded-lg px-3 py-2 font-mono"
             >
               <option value="BTCUSDT">BTC/USDT</option>
               <option value="ETHUSDT">ETH/USDT</option>
@@ -122,7 +122,7 @@ export const BacktestView: React.FC<BacktestViewProps> = ({
             <select
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value as Timeframe)}
-              className="bg-[#141A29] border border-[#1E2638] text-xs text-white rounded-lg px-3 py-2 font-mono"
+              className="min-h-[44px] bg-[#141A29] border border-[#1E2638] text-xs text-white rounded-lg px-3 py-2 font-mono"
             >
               <option value="15m">15м Таймфрейм</option>
               <option value="1h">1ч Таймфрейм</option>
@@ -132,7 +132,7 @@ export const BacktestView: React.FC<BacktestViewProps> = ({
             <button
               onClick={handleRunBacktest}
               disabled={loading}
-              className="flex items-center space-x-2 bg-sky-500 hover:bg-sky-400 text-white font-semibold text-xs px-4 py-2 rounded-lg transition-all shadow-md shadow-sky-500/20 disabled:opacity-50"
+              className="min-h-[44px] col-span-2 sm:col-span-1 flex items-center justify-center space-x-2 bg-sky-500 hover:bg-sky-400 text-white font-semibold text-xs px-4 py-2 rounded-lg transition-all shadow-md shadow-sky-500/20 disabled:opacity-50 active:scale-95"
             >
               {loading ? (
                 <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -261,7 +261,7 @@ export const BacktestView: React.FC<BacktestViewProps> = ({
       </div>
 
       {/* Main Content Area */}
-      <div className="p-6 space-y-6">
+      <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 w-full max-w-full min-w-0">
         {!summary ? (
           <div className="border border-dashed border-[#1E2638] rounded-xl p-12 text-center space-y-3">
             <BarChart2 className="h-10 w-10 text-[#7B849B] mx-auto" />
@@ -441,7 +441,70 @@ export const BacktestView: React.FC<BacktestViewProps> = ({
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Mobile Trade Cards (< md screens) */}
+              <div className="md:hidden space-y-2.5 p-3">
+                {summary.trades.map((t) => {
+                  const isWin = t.result === "WIN";
+                  return (
+                    <div key={t.id} className="bg-[#0B0E14] border border-[#1E2638] rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between border-b border-[#1E2638] pb-1.5">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-bold text-white font-mono">{t.asset}</span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              t.type === "LONG"
+                                ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                                : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                            }`}
+                          >
+                            {t.type}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              isWin
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                            }`}
+                          >
+                            {isWin ? "ВИН" : "ЛОСС"}
+                          </span>
+                        </div>
+                        <span
+                          className={`font-mono font-bold text-sm ${
+                            t.pnlDollar >= 0 ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {t.pnlDollar >= 0 ? "+" : ""}${t.pnlDollar} ({t.rMultiple}R)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                        <div>
+                          <span className="text-[10px] text-[#7B849B] block">Вход → Выход:</span>
+                          <span className="text-white">
+                            ${t.entryPrice.toLocaleString()} → ${t.exitPrice.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-[#7B849B] block">Причина:</span>
+                          <span className="text-sky-300 font-semibold">
+                            {t.exitReason === "STOP_LOSS"
+                              ? "Стоп-лосс"
+                              : t.exitReason?.startsWith("TP")
+                              ? `Тейк-профит (${t.exitReason})`
+                              : t.exitReason === "TRAILING_STOP"
+                              ? "Трейлинг"
+                              : t.exitReason} ({t.durationHours}ч)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table for Trade Log (>= md screens) */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full min-w-[850px] text-left text-xs font-mono">
                   <thead className="bg-[#0E131F] text-[#7B849B] border-b border-[#1E2638]">
                     <tr>

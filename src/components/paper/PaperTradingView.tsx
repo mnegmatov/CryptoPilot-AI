@@ -200,62 +200,62 @@ export const PaperTradingView: React.FC = () => {
   const signal = modelDData?.signal;
 
   return (
-    <div className="flex-1 bg-[#0B0E14] flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
+    <div className="flex-1 bg-[#0B0E14] flex flex-col h-[calc(100vh-4rem)] overflow-y-auto w-full max-w-full min-w-0">
       {/* Top Header Banner */}
-      <div className="p-5 border-b border-[#1E2638] bg-[#0E131F] flex items-center justify-between">
+      <div className="p-3.5 sm:p-5 border-b border-[#1E2638] bg-[#0E131F] flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full max-w-full min-w-0">
         <div>
-          <h2 className="text-base font-bold text-white flex items-center space-x-2">
-            <Wallet className="h-4 w-4 text-emerald-400" />
+          <h2 className="text-sm sm:text-base font-bold text-white flex flex-wrap items-center gap-2">
+            <Wallet className="h-4 w-4 text-emerald-400 shrink-0" />
             <span>Виртуальный портфель (Демо-торговля CryptoPilot)</span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
               PAPER TRADING ONLY
             </span>
           </h2>
-          <p className="text-xs text-[#7B849B]">
+          <p className="text-xs text-[#7B849B] mt-0.5 leading-relaxed">
             Симуляция исполнения ордеров по котировкам Binance в реальном времени. Реальные деньги отключены.
           </p>
         </div>
 
         <button
           onClick={handleReset}
-          className="flex items-center space-x-1.5 text-xs text-[#7B849B] hover:text-white bg-[#141A29] px-3 py-1.5 rounded-lg border border-[#1E2638] transition-colors"
+          className="min-h-[44px] flex items-center justify-center space-x-1.5 text-xs text-[#7B849B] hover:text-white bg-[#141A29] px-3.5 py-2 rounded-lg border border-[#1E2638] transition-colors shrink-0 active:scale-95"
         >
-          <RotateCcw className="h-3 w-3" />
+          <RotateCcw className="h-3.5 w-3.5 shrink-0" />
           <span>Сбросить портфель</span>
         </button>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 w-full max-w-full min-w-0">
         {/* ========================================================================= */}
         {/* MODEL D 4H DYNAMIC TREND-FOLLOWING PANEL */}
         {/* ========================================================================= */}
-        <div className="bg-gradient-to-br from-[#121829] to-[#0E1322] p-5 rounded-2xl border border-sky-500/30 shadow-lg shadow-sky-950/20">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#1E2638] pb-4">
+        <div className="bg-gradient-to-br from-[#121829] to-[#0E1322] p-3.5 sm:p-5 rounded-2xl border border-sky-500/30 shadow-lg shadow-sky-950/20 w-full max-w-full min-w-0">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 border-b border-[#1E2638] pb-4">
             <div>
-              <div className="flex items-center space-x-2.5">
-                <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 tracking-wide">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 tracking-wide shrink-0">
                   MODEL D (4H TREND-FOLLOWING)
                 </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                  GRADE B+ VALIDATED
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
+                  GRADE B+
                 </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center space-x-1">
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center space-x-1 shrink-0">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>AUTO-EXECUTION ACTIVE</span>
+                  <span>AUTO-EXECUTION</span>
                 </span>
               </div>
-              <p className="text-xs text-[#94A3B8] mt-1.5">
+              <p className="text-xs text-[#94A3B8] mt-1.5 leading-relaxed">
                 4H Pullback-Bounce на EMA20 + 2.5×ATR Initial Stop + 5-свечной Structural Swing Trailing. Без фикс. TP.
               </p>
             </div>
 
             {/* Asset Selector */}
-            <div className="flex items-center space-x-1.5 bg-[#0B0E17] p-1 rounded-xl border border-[#1E2638]">
+            <div className="flex items-center space-x-1.5 bg-[#0B0E17] p-1 rounded-xl border border-[#1E2638] shrink-0">
               {["BTCUSDT", "ETHUSDT", "SOLUSDT"].map((sym) => (
                 <button
                   key={sym}
                   onClick={() => setSelectedAsset(sym)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-colors ${
+                  className={`min-h-[44px] min-w-[44px] px-3.5 py-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center ${
                     selectedAsset === sym
                       ? "bg-sky-500 text-white shadow-md shadow-sky-500/30"
                       : "text-[#7B849B] hover:text-white"
@@ -268,9 +268,9 @@ export const PaperTradingView: React.FC = () => {
           </div>
 
           {/* Model D Telemetry Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5 sm:gap-3 mt-4">
             {/* 4H Trend */}
-            <div className="bg-[#0B0E17]/80 p-3 rounded-xl border border-[#1E2638]">
+            <div className="bg-[#0B0E17]/80 p-2.5 sm:p-3 rounded-xl border border-[#1E2638]">
               <span className="text-[11px] text-[#7B849B] block">4H Тренд</span>
               <div className="flex items-center space-x-1.5 mt-1">
                 {telemetry?.trend4h === "BULLISH" ? (
@@ -395,7 +395,7 @@ export const PaperTradingView: React.FC = () => {
               {activeModelDPosition ? (
                 <button
                   onClick={() => handleClosePosition(activeModelDPosition.id)}
-                  className="px-3 py-1.5 text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-lg border border-rose-500/30 transition-colors"
+                  className="min-h-[44px] px-4 py-2 text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-lg border border-rose-500/30 transition-all active:scale-95 flex items-center justify-center w-full sm:w-auto"
                 >
                   Закрыть позицию Model D
                 </button>
@@ -403,7 +403,7 @@ export const PaperTradingView: React.FC = () => {
                 <button
                   onClick={handleDeployModelDTrade}
                   disabled={deployingModelD || !signal}
-                  className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center space-x-1.5 ${
+                  className={`min-h-[44px] px-4 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center space-x-2 active:scale-95 w-full sm:w-auto ${
                     signal?.stance === "BUY"
                       ? "bg-emerald-500 hover:bg-emerald-400 text-white shadow-md shadow-emerald-500/30"
                       : signal?.stance === "SHORT"
@@ -411,7 +411,7 @@ export const PaperTradingView: React.FC = () => {
                       : "bg-[#1E2638] hover:bg-[#2A344D] text-[#94A3B8] border border-[#334155]"
                   }`}
                 >
-                  <Zap className="h-3.5 w-3.5" />
+                  <Zap className="h-4 w-4 shrink-0" />
                   <span>
                     {deployingModelD
                       ? "Открытие..."
@@ -487,44 +487,120 @@ export const PaperTradingView: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-left text-xs font-mono">
-                <thead className="bg-[#0E131F] text-[#7B849B] border-b border-[#1E2638]">
-                  <tr>
-                    <th className="p-3">Инструмент</th>
-                    <th className="p-3">Стратегия</th>
-                    <th className="p-3">Тип</th>
-                    <th className="p-3">Кол-во</th>
-                    <th className="p-3">Цена входа</th>
-                    <th className="p-3">Текущая цена</th>
-                    <th className="p-3">Стоп-лосс / Трейлинг</th>
-                    <th className="p-3">Тейк-профит</th>
-                    <th className="p-3">Нереализованный PnL</th>
-                    <th className="p-3 text-right">Действие</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1E2638]/50">
-                  {openPositions.map((pos) => {
-                    const isProfit = pos.unrealizedPnl >= 0;
-                    const isModelD = pos.strategyVersion === "MODEL_D" || pos.trailingStopType === "STRUCTURAL_SWING";
-                    return (
-                      <tr key={pos.id} className="hover:bg-[#1E2638]/30 transition-colors">
-                        <td className="p-3 text-white font-bold">{pos.asset}</td>
-                        <td className="p-3">
-                          {isModelD ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              MODEL D 4H
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#1E2638] text-[#94A3B8]">
-                              V2/V3 1H
+            <>
+              {/* Mobile Cards for Open Positions (< md screens) */}
+              <div className="md:hidden space-y-3 p-3">
+                {openPositions.map((pos) => {
+                  const isProfit = pos.unrealizedPnl >= 0;
+                  const isModelD = pos.strategyVersion === "MODEL_D" || pos.trailingStopType === "STRUCTURAL_SWING";
+                  return (
+                    <div
+                      key={pos.id}
+                      className="bg-[#0B0E14] border border-[#1E2638] rounded-xl p-3.5 space-y-3 shadow-md"
+                    >
+                      <div className="flex items-center justify-between border-b border-[#1E2638] pb-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-base font-bold text-white font-mono">{pos.asset}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                              pos.type === "LONG"
+                                ? "bg-sky-500/20 text-sky-400"
+                                : "bg-purple-500/20 text-purple-400"
+                            }`}
+                          >
+                            {pos.type}
+                          </span>
+                          {isModelD && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              MODEL D
                             </span>
                           )}
-                        </td>
-                        <td className="p-3">
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              pos.type === "LONG"
+                        </div>
+                        <div
+                          className={`font-mono font-bold text-sm ${
+                            isProfit ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {isProfit ? "+" : ""}${pos.unrealizedPnl} ({isProfit ? "+" : ""}
+                          {pos.unrealizedPnlPercent}%)
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                        <div>
+                          <span className="text-[10px] text-[#7B849B] block">Вход:</span>
+                          <span className="text-white font-semibold">${pos.entryPrice.toLocaleString()}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#7B849B] block">Текущая цена:</span>
+                          <span className="text-white font-semibold">${pos.currentPrice.toLocaleString()}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#7B849B] block">Стоп-лосс:</span>
+                          <span className="text-rose-400 font-semibold">${pos.stopLoss.toLocaleString()}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#7B849B] block">Тейк-профит:</span>
+                          <span className="text-emerald-400 font-semibold">
+                            {isModelD ? "Трейлинг" : `$${pos.takeProfit.toLocaleString()}`}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#7B849B] block">Объем:</span>
+                          <span className="text-white">{pos.sizeUnits}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleClosePosition(pos.id)}
+                        className="min-h-[44px] w-full py-2 text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-lg border border-rose-500/30 transition-all active:scale-95 flex items-center justify-center"
+                      >
+                        Закрыть позицию
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table for Open Positions (>= md screens) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full min-w-[850px] text-left text-xs font-mono">
+                  <thead className="bg-[#0E131F] text-[#7B849B] border-b border-[#1E2638]">
+                    <tr>
+                      <th className="p-3">Инструмент</th>
+                      <th className="p-3">Стратегия</th>
+                      <th className="p-3">Тип</th>
+                      <th className="p-3">Кол-во</th>
+                      <th className="p-3">Цена входа</th>
+                      <th className="p-3">Текущая цена</th>
+                      <th className="p-3">Стоп-лосс / Трейлинг</th>
+                      <th className="p-3">Тейк-профит</th>
+                      <th className="p-3">Нереализованный PnL</th>
+                      <th className="p-3 text-right">Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1E2638]/50">
+                    {openPositions.map((pos) => {
+                      const isProfit = pos.unrealizedPnl >= 0;
+                      const isModelD = pos.strategyVersion === "MODEL_D" || pos.trailingStopType === "STRUCTURAL_SWING";
+                      return (
+                        <tr key={pos.id} className="hover:bg-[#1E2638]/30 transition-colors">
+                          <td className="p-3 text-white font-bold">{pos.asset}</td>
+                          <td className="p-3">
+                            {isModelD ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                MODEL D 4H
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#1E2638] text-[#94A3B8]">
+                                V2/V3 1H
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                pos.type === "LONG"
                                 ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
                                 : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
                             }`}
@@ -577,6 +653,7 @@ export const PaperTradingView: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          </>
           )}
         </div>
 
@@ -594,60 +671,95 @@ export const PaperTradingView: React.FC = () => {
               В истории пока нет закрытых сделок.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-left text-xs font-mono">
-                <thead className="bg-[#0E131F] text-[#7B849B] border-b border-[#1E2638]">
-                  <tr>
-                    <th className="p-3">Инструмент</th>
-                    <th className="p-3">Причина выхода</th>
-                    <th className="p-3">Цена входа</th>
-                    <th className="p-3">Цена выхода</th>
-                    <th className="p-3">Реализованный PnL ($)</th>
-                    <th className="p-3">Время закрытия</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1E2638]/50">
-                  {history.map((h) => (
-                    <tr key={h.id} className="hover:bg-[#1E2638]/30 transition-colors">
-                      <td className="p-3 text-white font-bold">{h.asset}</td>
-                      <td className="p-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                            h.closeReason === "TAKE_PROFIT_HIT"
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                              : h.closeReason === "STOP_LOSS_HIT"
-                              ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                              : "bg-sky-500/10 text-sky-400 border border-sky-500/20"
-                          }`}
-                        >
+            <>
+              {/* Mobile History Cards (< md screens) */}
+              <div className="md:hidden space-y-2.5 p-3">
+                {history.map((h) => (
+                  <div key={h.id} className="bg-[#0B0E14] border border-[#1E2638] rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between border-b border-[#1E2638] pb-1.5">
+                      <span className="text-sm font-bold text-white font-mono">{h.asset}</span>
+                      <span className={`font-mono font-bold text-sm ${h.realizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                        {h.realizedPnl >= 0 ? "+" : ""}${h.realizedPnl}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                      <div>
+                        <span className="text-[10px] text-[#7B849B] block">Вход → Выход:</span>
+                        <span className="text-white">${h.entryPrice.toLocaleString()} → ${(h.exitPrice ?? h.currentPrice).toLocaleString()}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-[#7B849B] block">Причина:</span>
+                        <span className="text-sky-300 font-semibold">
                           {h.closeReason === "TAKE_PROFIT_HIT"
                             ? "Тейк-профит"
                             : h.closeReason === "STOP_LOSS_HIT"
                             ? "Стоп-лосс"
                             : h.closeReason === "TRAILING_STOP_HIT"
-                            ? "Трейлинг-стоп (Свинг)"
+                            ? "Свинг-трейлинг"
                             : h.closeReason?.replace(/_/g, " ")}
                         </span>
-                      </td>
-                      <td className="p-3 text-white">${h.entryPrice.toLocaleString()}</td>
-                      <td className="p-3 text-white">
-                        ${(h.exitPrice ?? h.currentPrice).toLocaleString()}
-                      </td>
-                      <td
-                        className={`p-3 font-bold ${
-                          h.realizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"
-                        }`}
-                      >
-                        {h.realizedPnl >= 0 ? "+" : ""}${h.realizedPnl}
-                      </td>
-                      <td className="p-3 text-[#7B849B]">
-                        {h.closedAt ? new Date(h.closedAt).toLocaleTimeString() : "-"}
-                      </td>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table for History (>= md screens) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full min-w-[700px] text-left text-xs font-mono">
+                  <thead className="bg-[#0E131F] text-[#7B849B] border-b border-[#1E2638]">
+                    <tr>
+                      <th className="p-3">Инструмент</th>
+                      <th className="p-3">Причина выхода</th>
+                      <th className="p-3">Цена входа</th>
+                      <th className="p-3">Цена выхода</th>
+                      <th className="p-3">Реализованный PnL ($)</th>
+                      <th className="p-3">Время закрытия</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-[#1E2638]/50">
+                    {history.map((h) => (
+                      <tr key={h.id} className="hover:bg-[#1E2638]/30 transition-colors">
+                        <td className="p-3 text-white font-bold">{h.asset}</td>
+                        <td className="p-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              h.closeReason === "TAKE_PROFIT_HIT"
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                : h.closeReason === "STOP_LOSS_HIT"
+                                ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                : "bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                            }`}
+                          >
+                            {h.closeReason === "TAKE_PROFIT_HIT"
+                              ? "Тейк-профит"
+                              : h.closeReason === "STOP_LOSS_HIT"
+                              ? "Стоп-лосс"
+                              : h.closeReason === "TRAILING_STOP_HIT"
+                              ? "Трейлинг-стоп (Свинг)"
+                              : h.closeReason?.replace(/_/g, " ")}
+                          </span>
+                        </td>
+                        <td className="p-3 text-white">${h.entryPrice.toLocaleString()}</td>
+                        <td className="p-3 text-white">
+                          ${(h.exitPrice ?? h.currentPrice).toLocaleString()}
+                        </td>
+                        <td
+                          className={`p-3 font-bold ${
+                            h.realizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {h.realizedPnl >= 0 ? "+" : ""}${h.realizedPnl}
+                        </td>
+                        <td className="p-3 text-[#7B849B]">
+                          {h.closedAt ? new Date(h.closedAt).toLocaleTimeString() : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
