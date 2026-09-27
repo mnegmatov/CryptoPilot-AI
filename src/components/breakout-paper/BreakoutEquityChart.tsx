@@ -29,7 +29,7 @@ export const BreakoutEquityChart: React.FC<BreakoutEquityChartProps> = ({
 
   // ResizeObserver to handle container width/height dynamically on rotation / resize
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (typeof ResizeObserver === "undefined" || !containerRef.current) return;
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {

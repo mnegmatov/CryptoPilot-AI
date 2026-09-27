@@ -100,6 +100,7 @@ export const PaperTradingView: React.FC = () => {
     fetchModelD(selectedAsset);
     const interval = setInterval(() => fetchModelD(selectedAsset), 15000); // 15s refresh for 4H telemetry
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAsset]);
 
   const handleClosePosition = async (positionId: string) => {
