@@ -1,7 +1,7 @@
 import { extractTechnicalIndicators } from "../quant/indicators";
 import { analyzeMarketStructure } from "../quant/structure";
 import { generateTradingSignal } from "../signals/generator";
-import { BacktestSummary, BacktestTrade, Candle, Timeframe } from "../types";
+import { BacktestSummary, BacktestTrade, Candle, Timeframe, TradingSignal } from "../types";
 
 export interface BacktestOptions {
   initialBalance?: number; // default $10,000
@@ -17,17 +17,27 @@ export interface BacktestOptions {
   fillModel?: "CONSERVATIVE_TOUCH" | "PENETRATION"; // default PENETRATION
 
   // Phase 4 Strategic Enhancements & V2/V3 Architecture
-  strategyVersion?: "V1" | "V2" | "V3"; // default "V2"
+  strategyVersion?: "V1" | "V2" | "V3" | "MODEL_D"; // default "V2"
   enableHtfGate?: boolean; // default true for V2/V3, false for V1
   candlesHTF?: Candle[]; // optional explicit 4H candles
-  trailingStopType?: "BREAKEVEN_ONLY" | "CHANDELIER_ATR"; // default "CHANDELIER_ATR"
+  trailingStopType?: "BREAKEVEN_ONLY" | "CHANDELIER_ATR" | "STRUCTURAL_SWING"; // default "CHANDELIER_ATR"
   chandelierMultiplier?: number; // default 3.5 for V2/V3, 2.5 for V1
+  swingTrailingBars?: number; // default 5
   enableScaleOut?: boolean; // default true for V2, false for V3/V1
   maxHoldingHours?: number; // default 240 for V3, 168 for V2, 48 for V1
   enableRegimeRisk?: boolean; // default false
   normalRiskPercent?: number; // default 1.5%
   lowAdxRiskPercent?: number; // default 0.75%
   adxRegimeThreshold?: number; // default 25
+  
+  // Custom Research Generators
+  signalGenerator?: (
+    asset: string,
+    indicators: any,
+    structure: any,
+    context: any,
+    options: any
+  ) => TradingSignal;
 }
 
 /**
@@ -59,7 +69,7 @@ export function getHistorical4hCandles(
     }
   }
 
-  for (const [bucketTimestamp, bars] of buckets.entries()) {
+  for (const [bucketTimestamp, bars] of Array.from(buckets.entries())) {
     if (bars.length > 0) {
       const open = bars[0].open;
       const close = bars[bars.length - 1].close;
@@ -381,7 +391,7 @@ export function runBacktest(
           marketRegime: "TRENDING_BULL" as const,
         };
 
-        const signal = generateTradingSignal(asset, indicators, structure, contextMock, {
+        const sigOpts = {
           strategyVersion: options.strategyVersion ?? "V2",
           adxThreshold: options.adxThreshold ?? (isV1 ? 20 : 25),
           enableShorts: options.enableShorts ?? true,
@@ -391,7 +401,16 @@ export function runBacktest(
           regimeRiskThreshold: options.adxRegimeThreshold ?? 25,
           normalRiskPercent: options.normalRiskPercent ?? 1.5,
           lowAdxRiskPercent: options.lowAdxRiskPercent ?? 0.75,
-        });
+          modelDOptions: options.strategyVersion === "MODEL_D" ? {
+            currentBar,
+            prevBar: historicalSlice[historicalSlice.length - 2],
+            recent5ClosedCandles: historicalSlice.slice(-5).map(c => ({ low: c.low, high: c.high }))
+          } : undefined
+        };
+
+        const signal = options.signalGenerator
+          ? options.signalGenerator(asset, indicators, structure, contextMock, sigOpts)
+          : generateTradingSignal(asset, indicators, structure, contextMock, sigOpts as any);
 
         const atr = indicators.atr14;
 

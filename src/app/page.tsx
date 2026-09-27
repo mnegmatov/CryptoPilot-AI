@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { BacktestView } from "@/components/backtest/BacktestView";
+import { BreakoutPaperView } from "@/components/breakout-paper/BreakoutPaperView";
 import { Header } from "@/components/layout/Header";
 import { PaperTradingView } from "@/components/paper/PaperTradingView";
 import { CommandPalette } from "@/components/terminal/CommandPalette";
@@ -13,7 +14,7 @@ import { WatchlistAsset } from "@/core/data/market-feed";
 import { Candle, MarketContextData, Timeframe, TradingSignal } from "@/core/types";
 
 export default function TerminalPage() {
-  const [activeTab, setActiveTab] = useState<"terminal" | "backtest" | "paper">("terminal");
+  const [activeTab, setActiveTab] = useState<"terminal" | "backtest" | "paper" | "breakout-paper">("terminal");
   const [selectedSymbol, setSelectedSymbol] = useState("BTCUSDT");
   const [timeframe, setTimeframe] = useState<Timeframe>("1h");
   const [mobileSection, setMobileSection] = useState<"chart" | "watchlist" | "signal">("chart");
@@ -367,6 +368,7 @@ export default function TerminalPage() {
         {activeTab === "backtest" && <BacktestView initialSymbol={selectedSymbol} />}
 
         {activeTab === "paper" && <PaperTradingView />}
+        {activeTab === "breakout-paper" && <BreakoutPaperView />}
       </main>
 
       {/* ⌘K Command Palette */}

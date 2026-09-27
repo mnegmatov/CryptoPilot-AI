@@ -1,0 +1,46 @@
+name: Breakout Paper Scheduler
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-breakout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Trigger Vercel Breakout Paper Endpoint
+        env:
+          BREAKOUT_CRON_URL: ${{ vars.BREAKOUT_CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BREAKOUT_CRON_URL" ]; then
+            echo "Error: BREAKOUT_CRON_URL repository variable is not set."
+            exit 1
+          fi
+
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Error: CRON_SECRET repository secret is not set."
+            exit 1
+          fi
+
+          echo "Starting Breakout Paper Trading cron request to $BREAKOUT_CRON_URL..."
+
+          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" -X GET "$BREAKOUT_CRON_URL" \
+            -H "Authorization: Bearer $CRON_SECRET")
+
+          echo "HTTP Status: $HTTP_STATUS"
+
+          if [ -f response.json ]; then
+            echo "Response Body:"
+            cat response.json
+          fi
+
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Error: Endpoint returned non-200 HTTP status code: $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "Breakout Paper Trading cycle completed successfully."

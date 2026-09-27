@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
-import { Activity, BarChart3, Bot, Compass, Search, ShieldCheck, Terminal, Wallet } from "lucide-react";
+import { Activity, BarChart3, Bot, Compass, Search, ShieldCheck, Terminal, Wallet, Zap } from "lucide-react";
 import { MarketContextData } from "@/core/types";
 
 interface HeaderProps {
-  activeTab: "terminal" | "backtest" | "paper";
-  setActiveTab: (tab: "terminal" | "backtest" | "paper") => void;
+  activeTab: "terminal" | "backtest" | "paper" | "breakout-paper";
+  setActiveTab: (tab: "terminal" | "backtest" | "paper" | "breakout-paper") => void;
   context: MarketContextData | null;
   onOpenSearch: () => void;
 }
@@ -107,7 +107,18 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Wallet className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden sm:inline">Демо</span>
+            <span className="hidden sm:inline">Демо (Model D)</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("breakout-paper")}
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all ${
+              activeTab === "breakout-paper"
+                ? "bg-amber-500 text-slate-950 font-bold shadow-sm"
+                : "text-[#7B849B] hover:text-amber-400 hover:bg-[#1E2638]/50"
+            }`}
+          >
+            <Zap className="h-3.5 w-3.5 shrink-0" />
+            <span className="hidden sm:inline">Breakout Paper</span>
           </button>
         </div>
 
