@@ -49,7 +49,7 @@ function main() {
         VAL: splits.validation,
         OOS: splits.oosHoldout
       })) {
-        const options: BacktestOptions = {
+        const options: any = {
           initialBalance: 10000,
           riskPerTradePercent: 1.0,
           enableShorts: model.enableShorts,
