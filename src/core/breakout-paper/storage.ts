@@ -80,11 +80,25 @@ export function createInitialBreakoutAccount(): BreakoutAccount {
     positions: [],
     tradeHistory: [],
     version: 1,
+    accountingVersion: 2,
     lastUpdated: Date.now(),
     lastProcessedCandles: {},
     lastExitTimestamps: {},
     stats: initialStats,
   };
+}
+
+
+function migrateLegacyBreakoutAccount(account: BreakoutAccount): BreakoutAccount {
+  if ((account.accountingVersion ?? 1) >= 2) return account;
+  const reservedPositionCapital = account.positions.reduce(
+    (sum, position) => sum + position.positionSizeDollar,
+    0
+  );
+  account.cash -= reservedPositionCapital;
+  account.accountingVersion = 2;
+  account.equity = account.cash + reservedPositionCapital + account.unrealizedPnl;
+  return account;
 }
 
 function loadLocalFileAccount(): BreakoutAccount {
@@ -100,6 +114,7 @@ function loadLocalFileAccount(): BreakoutAccount {
           Array.isArray(parsed.tradeHistory)
         ) {
           if (!parsed.version) parsed.version = 1;
+          migrateLegacyBreakoutAccount(parsed);
           if (!parsed.lastProcessedCandles) parsed.lastProcessedCandles = {};
           if (!parsed.lastExitTimestamps) parsed.lastExitTimestamps = {};
           if (!parsed.stats) parsed.stats = createInitialBreakoutAccount().stats;
@@ -240,6 +255,7 @@ export class BreakoutStorageService {
       }
       const account: BreakoutAccount = typeof data === "string" ? JSON.parse(data) : data;
       if (!account.lastProcessedCandles) account.lastProcessedCandles = {};
+      migrateLegacyBreakoutAccount(account);
       if (!account.lastExitTimestamps) account.lastExitTimestamps = {};
       if (!account.stats) account.stats = createInitialBreakoutAccount().stats;
       return account;
