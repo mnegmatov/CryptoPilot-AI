@@ -266,7 +266,10 @@ export class BreakoutPaperService {
             };
 
             // Update cash and account
-            account.cash += existingPosition.positionSizeDollar + netPnl;
+            // Entry notional was reserved from cash when the position opened.
+            // At close, release that reserved capital plus gross PnL, then subtract only the exit fee.
+            // Entry fee was already deducted from cash at entry and is included in realizedPnl via netPnl.
+            account.cash += existingPosition.positionSizeDollar + grossPnl - exitFee;
             account.realizedPnl += netPnl;
             account.fees += totalFees;
             account.slippagePaid += totalSlippage;
@@ -314,7 +317,12 @@ export class BreakoutPaperService {
                   ? actualEntryPrice - stopDist
                   : actualEntryPrice + stopDist;
 
-              const currentEquity = account.cash + account.positions.reduce((acc, p) => acc + p.unrealizedPnl, 0);
+              const currentEquity =
+                account.cash +
+                account.positions.reduce(
+                  (acc, p) => acc + p.positionSizeDollar + p.unrealizedPnl,
+                  0
+                );
               const riskDollar = currentEquity * (config.riskPerTradePercent / 100);
               const units = riskDollar / stopDist;
               const positionSizeDollar = units * actualEntryPrice;
@@ -346,7 +354,9 @@ export class BreakoutPaperService {
                 channelExitLevel: sig.direction === "LONG" ? techLevels.ll10 : techLevels.hh10,
               };
 
-              account.cash -= entryFee;
+              // Reserve the position notional in cash. Entry fee is an additional cash outflow.
+              // This keeps cash + marked position value consistent with equity while the trade is open.
+              account.cash -= positionSizeDollar + entryFee;
               account.fees += entryFee;
               account.slippagePaid += entrySlippage;
               account.positions.push(newPosition);
@@ -395,8 +405,14 @@ export class BreakoutPaperService {
 
       // 8. Recompute total account equity & unrealized PnL
       const totalUnrealizedPnl = account.positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+      const reservedPositionCapital = account.positions.reduce(
+        (sum, p) => sum + p.positionSizeDollar,
+        0
+      );
       account.unrealizedPnl = totalUnrealizedPnl;
-      account.equity = account.cash + totalUnrealizedPnl;
+      // Equity = free cash + reserved position capital + marked unrealized PnL.
+      // This is consistent with cash being reduced when a position is opened.
+      account.equity = account.cash + reservedPositionCapital + totalUnrealizedPnl;
 
       // 9. Update stats
       this.updateAccountStats(account);

@@ -87,6 +87,8 @@ export interface BreakoutAccount {
   positions: BreakoutPosition[];
   tradeHistory: BreakoutClosedTrade[];
   version: number;
+  /** Accounting schema version. Version 2 reserves open position notional from cash. */
+  accountingVersion?: number;
   lastUpdated: number;
   lastProcessedCandles: Record<string, number>; // symbol -> timestamp of last evaluated completed 4H candle
   lastExitTimestamps: Record<string, number>;    // symbol -> timestamp of candle on which position exited

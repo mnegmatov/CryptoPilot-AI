@@ -306,6 +306,77 @@ describe("Model Breakout V2-AD — Paper Trading Test Suite", () => {
     expect(reloaded.version).toBe(6); // Incremented on save
   });
 
+  // 13. Cash/equity accounting: opening a position reserves notional and closing realizes exactly net PnL
+  it("13. Cash/equity accounting: no artificial capital increase from opening/closing a position", async () => {
+    const baseTime = 1700000000000;
+    const candles = generateCandles(30, 100, baseTime);
+    candles[28].high = 120;
+    candles[28].volume = 2000;
+
+    const formingCandle: Candle = {
+      timestamp: candles[28].timestamp + FOUR_HOURS_MS,
+      open: 110,
+      high: 112,
+      low: 109,
+      close: 111,
+      volume: 500,
+    };
+    const allCandles = [...candles.slice(0, 29), formingCandle];
+    const entryTime = formingCandle.timestamp + 10 * 60 * 1000;
+    vi.spyOn(Date, "now").mockReturnValue(entryTime);
+
+    const candlesMap = {
+      BTCUSDT: allCandles,
+      ETHUSDT: generateCandles(30, 2000, baseTime),
+      SOLUSDT: generateCandles(30, 50, baseTime),
+    };
+    const pricesMap = { BTCUSDT: 110, ETHUSDT: 2000, SOLUSDT: 50 };
+
+    const opened = await BreakoutPaperService.executeCycle(V2_AD_CONFIG, candlesMap, pricesMap);
+    const position = opened.account.positions.find((p) => p.asset === "BTCUSDT");
+    expect(position).toBeDefined();
+
+    const entryNotional = position!.positionSizeDollar;
+    const entryFee = position!.feesPaid;
+    const entryEquity = opened.account.equity;
+
+    // Opening must reserve the position notional instead of leaving cash unchanged.
+    expect(opened.account.cash).toBeCloseTo(10000 - entryNotional - entryFee, 8);
+    // With no price movement, equity is initial capital minus entry fee.
+    expect(entryEquity).toBeCloseTo(10000 - entryFee, 8);
+
+    // Move into T+2 so the channel exit can be triggered and close at a known price.
+    const closeCandle: Candle = {
+      timestamp: formingCandle.timestamp + FOUR_HOURS_MS,
+      open: 110,
+      high: 115,
+      low: 109,
+      close: 90,
+      volume: 500,
+    };
+    const candlesForClose = [...candles.slice(0, 29), formingCandle, closeCandle];
+    const closeTime = closeCandle.timestamp + 10 * 60 * 1000;
+    vi.spyOn(Date, "now").mockReturnValue(closeTime);
+
+    const closePrices = { BTCUSDT: 90, ETHUSDT: 2000, SOLUSDT: 50 };
+    const closed = await BreakoutPaperService.executeCycle(
+      V2_AD_CONFIG,
+      candlesForClose,
+      closePrices
+    );
+
+    expect(closed.account.positions.find((p) => p.asset === "BTCUSDT")).toBeUndefined();
+    expect(closed.account.tradeHistory).toHaveLength(1);
+
+    const trade = closed.account.tradeHistory[0];
+    const expectedNetPnl = trade.netPnl;
+
+    // After close, equity/cash must equal initial balance plus the actual net PnL.
+    expect(closed.account.cash).toBeCloseTo(10000 + expectedNetPnl, 8);
+    expect(closed.account.equity).toBeCloseTo(10000 + expectedNetPnl, 8);
+    expect(closed.account.realizedPnl).toBeCloseTo(expectedNetPnl, 8);
+  });
+
   // 13. Duplicate cycle protection
   it("13. Duplicate cycle protection: same breakout candle does not trigger duplicate entry", async () => {
     const baseTime = 1700000000000;
