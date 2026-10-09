@@ -739,4 +739,196 @@ describe("Model Breakout V2-AD — Paper Trading Test Suite", () => {
       expect(account.accountingVersion).toBe(2);
     });
   });
+
+  // 20. Capital constraints & negative cash prevention
+  describe("20. Capital constraints & negative cash prevention", () => {
+    it("20-A. Does not open position when available cash is less than required capital", async () => {
+      // Setup account with an existing position reserving capital, leaving only $50 free cash
+      const account = createInitialBreakoutAccount();
+      account.positions.push({
+        id: "pos_RESERVED_1",
+        asset: "ETHUSDT",
+        direction: "LONG",
+        entryTimestamp: 1700000000000,
+        entryPrice: 2000,
+        stopPrice: 1900,
+        initialStopDistance: 100,
+        units: 4.975,
+        riskDollar: 100,
+        positionSizeDollar: 9950,
+        feesPaid: 5,
+        slippagePaid: 5,
+        currentPrice: 2000,
+        unrealizedPnl: 0,
+        unrealizedPnlPercent: 0,
+        unrealizedR: 0,
+        highestPriceSinceEntry: 2000,
+        lowestPriceSinceEntry: 2000,
+        breakoutTimestamp: 1700000000000 - FOUR_HOURS_MS,
+        breakoutLevel: 1990,
+        breakoutVolRatio: 1.5,
+        channelExitLevel: 1950,
+      });
+      account.cash = 50;
+      account.equity = 10000;
+      await BreakoutStorageService.saveAccount(account);
+
+      const baseTime = 1700000000000;
+      const candles = generateCandles(30, 100, baseTime);
+      candles[28].high = 120; // Breakout on bar 28
+      candles[28].volume = 2000;
+
+      const formingCandle: Candle = {
+        timestamp: candles[28].timestamp + FOUR_HOURS_MS,
+        open: 110,
+        high: 112,
+        low: 109,
+        close: 111,
+        volume: 500,
+      };
+      const allCandles = [...candles.slice(0, 29), formingCandle];
+      const entryTime = formingCandle.timestamp + 10 * 60 * 1000;
+      vi.spyOn(Date, "now").mockReturnValue(entryTime);
+
+      const candlesMap = {
+        BTCUSDT: allCandles,
+        ETHUSDT: generateCandles(30, 2000, baseTime),
+        SOLUSDT: generateCandles(30, 50, baseTime),
+      };
+      const pricesMap = { BTCUSDT: 110, ETHUSDT: 2000, SOLUSDT: 50 };
+
+      const report = await BreakoutPaperService.executeCycle(V2_AD_CONFIG, candlesMap, pricesMap);
+
+      // New position must NOT be opened because required notional > $50
+      expect(report.account.positions).toHaveLength(1);
+      expect(report.account.positions[0].id).toBe("pos_RESERVED_1");
+      expect(report.openedPositionsThisCycle).toHaveLength(0);
+      // Cash must remain positive and unchanged
+      expect(report.account.cash).toBe(50);
+      expect(report.account.cash).toBeGreaterThanOrEqual(0);
+    });
+
+    it("20-B. Simultaneous multiple breakouts: opens only while cash suffices, never goes negative", async () => {
+      // Account with $3,000 cash (enough for ~1 position, not 2 or 3)
+      const account = createInitialBreakoutAccount();
+      account.cash = 3000;
+      account.equity = 10000;
+      await BreakoutStorageService.saveAccount(account);
+
+      const baseTime = 1700000000000;
+
+      // Create breakout for all 3 assets simultaneously
+      const createBreakoutSeries = (startPrice: number) => {
+        const candles = generateCandles(30, startPrice, baseTime);
+        candles[28].high = startPrice * 1.2;
+        candles[28].volume = 2000;
+        const forming: Candle = {
+          timestamp: candles[28].timestamp + FOUR_HOURS_MS,
+          open: startPrice * 1.1,
+          high: startPrice * 1.12,
+          low: startPrice * 1.09,
+          close: startPrice * 1.11,
+          volume: 500,
+        };
+        return [...candles.slice(0, 29), forming];
+      };
+
+      const btcCandles = createBreakoutSeries(100);
+      const ethCandles = createBreakoutSeries(2000);
+      const solCandles = createBreakoutSeries(50);
+
+      const formingTs = btcCandles[29].timestamp;
+      vi.spyOn(Date, "now").mockReturnValue(formingTs + 10 * 60 * 1000);
+
+      const candlesMap = {
+        BTCUSDT: btcCandles,
+        ETHUSDT: ethCandles,
+        SOLUSDT: solCandles,
+      };
+      const pricesMap = {
+        BTCUSDT: 110,
+        ETHUSDT: 2200,
+        SOLUSDT: 55,
+      };
+
+      const report = await BreakoutPaperService.executeCycle(V2_AD_CONFIG, candlesMap, pricesMap);
+
+      // Free cash must NEVER be negative
+      expect(report.account.cash).toBeGreaterThanOrEqual(0);
+
+      // Verify that reserved capital + cash equals or is less than total starting cash
+      const totalReserved = report.account.positions.reduce(
+        (acc, p) => acc + p.positionSizeDollar,
+        0
+      );
+      expect(totalReserved).toBeLessThanOrEqual(3000);
+    });
+
+    it("20-C. Preserves existing position PnL and accounting while rejecting over-allocation", async () => {
+      const account = createInitialBreakoutAccount();
+      // Add an existing position with positive unrealized PnL
+      const existingPos: BreakoutPosition = {
+        id: "pos_EXISTING_1",
+        asset: "BTCUSDT",
+        direction: "LONG",
+        entryTimestamp: 1700000000000,
+        entryPrice: 100,
+        stopPrice: 90,
+        initialStopDistance: 10,
+        units: 20,
+        riskDollar: 100,
+        positionSizeDollar: 2000,
+        feesPaid: 1,
+        slippagePaid: 1,
+        currentPrice: 105,
+        unrealizedPnl: 100,
+        unrealizedPnlPercent: 5,
+        unrealizedR: 1,
+        highestPriceSinceEntry: 106,
+        lowestPriceSinceEntry: 99,
+        breakoutTimestamp: 1700000000000 - FOUR_HOURS_MS,
+        breakoutLevel: 100,
+        breakoutVolRatio: 1.5,
+        channelExitLevel: 95,
+      };
+
+      account.positions.push(existingPos);
+      account.cash = 100; // only $100 free cash left
+      account.equity = 100 + 2000 + 100; // cash + positionSizeDollar + unrealizedPnl = 2200
+      await BreakoutStorageService.saveAccount(account);
+
+      const baseTime = 1700000000000 + FOUR_HOURS_MS;
+      const ethCandles = generateCandles(30, 2000, baseTime);
+      ethCandles[28].high = 2500;
+      ethCandles[28].volume = 2000;
+      const ethForming: Candle = {
+        timestamp: ethCandles[28].timestamp + FOUR_HOURS_MS,
+        open: 2200,
+        high: 2250,
+        low: 2180,
+        close: 2210,
+        volume: 500,
+      };
+      const allEth = [...ethCandles.slice(0, 29), ethForming];
+
+      vi.spyOn(Date, "now").mockReturnValue(ethForming.timestamp + 10 * 60 * 1000);
+
+      const candlesMap = {
+        BTCUSDT: generateCandles(30, 105, baseTime),
+        ETHUSDT: allEth,
+        SOLUSDT: generateCandles(30, 50, baseTime),
+      };
+      const pricesMap = { BTCUSDT: 105, ETHUSDT: 2200, SOLUSDT: 50 };
+
+      const report = await BreakoutPaperService.executeCycle(V2_AD_CONFIG, candlesMap, pricesMap);
+
+      // ETH position should NOT have been opened because $100 cash is not enough
+      expect(report.account.positions).toHaveLength(1);
+      expect(report.account.positions[0].id).toBe("pos_EXISTING_1");
+      // Existing position PnL is completely preserved/updated by live price
+      expect(report.account.positions[0].unrealizedPnl).toBe(100);
+      expect(report.account.cash).toBe(100);
+      expect(report.account.cash).toBeGreaterThanOrEqual(0);
+    });
+  });
 });
