@@ -12,6 +12,9 @@ import {
   createInitialBreakoutAccount,
   BREAKOUT_STORAGE_KEY,
   setCustomBreakoutRedisClient,
+  migrateBreakoutAccountV3,
+  LEGACY_GHOST_TRADE_ID,
+  BREAKOUT_FEE_RATE,
 } from "@/core/breakout-paper/storage";
 import { BreakoutPaperService } from "@/core/breakout-paper/service";
 import { BreakoutPosition } from "@/core/breakout-paper/types";
@@ -361,7 +364,11 @@ describe("Model Breakout V2-AD — Paper Trading Test Suite", () => {
     const closePrices = { BTCUSDT: 90, ETHUSDT: 2000, SOLUSDT: 50 };
     const closed = await BreakoutPaperService.executeCycle(
       V2_AD_CONFIG,
-      candlesForClose,
+      {
+        BTCUSDT: candlesForClose,
+        ETHUSDT: generateCandles(31, 2000, baseTime),
+        SOLUSDT: generateCandles(31, 50, baseTime),
+      },
       closePrices
     );
 
@@ -609,6 +616,7 @@ describe("Model Breakout V2-AD — Paper Trading Test Suite", () => {
     );
   });
 
+
   // 18. No fake price fallback
   it("18. No fake price fallback: throws error instead of returning 0 or synthetic fake price", async () => {
     vi.spyOn(BreakoutPaperService, "fetchLivePrice").mockRejectedValue(
@@ -618,5 +626,117 @@ describe("Model Breakout V2-AD — Paper Trading Test Suite", () => {
     await expect(BreakoutPaperService.fetchLivePrice("BTCUSDT")).rejects.toThrow(
       /Real Binance live price unavailable/
     );
+  });
+
+  // 19. v3 Migration — ghost capital correction
+  describe("19. migrateBreakoutAccountV3", () => {
+    /** Build a legacy-looking BreakoutAccount that contains the known ghost trade */
+    function buildLegacyAccount() {
+      const account = createInitialBreakoutAccount();
+      // Force it to look like an accountingVersion 2 account (pre-v3)
+      account.accountingVersion = 2;
+
+      // Exact production numbers from the audit snapshot
+      const qty = 22.986468478223692;
+      const entryPrice = 124.00196999999999;
+      const exitPrice = 118.68063000000001;
+      const totalFees = 2.7892079675566848;
+
+      account.tradeHistory = [
+        {
+          id: LEGACY_GHOST_TRADE_ID,
+          asset: "SOLUSDT",
+          direction: "LONG" as const,
+          breakoutTimestamp: 1790510400000 - 4 * 3600 * 1000,
+          breakoutLevel: 120,
+          entryTimestamp: 1790510400000,
+          entryPrice,
+          stopPrice: 100,
+          exitTimestamp: 1790510400000 + 4 * 3600 * 1000,
+          exitPrice,
+          exitReason: "STOP_LOSS" as const,
+          quantity: qty,
+          riskDollar: 100,
+          fees: totalFees,
+          slippage: 0,
+          grossPnl: -125.108022,
+          netPnl: -125.108022 - totalFees,
+          pnlPercent: -5,
+          rMultiple: -1,
+          holdingDurationHours: 4,
+        },
+      ];
+
+      // Simulate the ghost-inflated cash: initialBalance + ghostCapital + realizedPnl
+      const positionNotional = qty * entryPrice;
+      const exitFee = qty * exitPrice * BREAKOUT_FEE_RATE;
+      const entryFee = totalFees - exitFee;
+      const ghostCapital = positionNotional - entryFee;
+      account.cash = account.initialBalance + ghostCapital + account.realizedPnl;
+      account.equity = account.cash; // no open positions in this fixture
+      return account;
+    }
+
+    it("19-A. Correct ghost capital computed and applied (matches audit figures)", () => {
+      const account = buildLegacyAccount();
+      const cashBefore = account.cash;
+
+      const result = migrateBreakoutAccountV3(account);
+
+      expect(result.migrated).toBe(true);
+      expect(result.ghostCapital).toBeCloseTo(2848.942, 2); // audit: $2,848.94
+      expect(account.accountingVersion).toBe(3);
+      expect(account.cash).toBeCloseTo(cashBefore - result.ghostCapital, 6);
+      // After correction, cash ≈ initialBalance + realizedPnl (no open positions)
+      expect(account.cash).toBeCloseTo(account.initialBalance + account.realizedPnl, 2);
+    });
+
+    it("19-B. Migration is idempotent — second call is a no-op", () => {
+      const account = buildLegacyAccount();
+      const first = migrateBreakoutAccountV3(account);
+      expect(first.migrated).toBe(true);
+
+      const cashAfterFirst = account.cash;
+      const equityAfterFirst = account.equity;
+
+      const second = migrateBreakoutAccountV3(account);
+      expect(second.migrated).toBe(false);
+      expect(second.ghostCapital).toBe(0);
+      expect(account.cash).toBe(cashAfterFirst);
+      expect(account.equity).toBe(equityAfterFirst);
+      expect(account.accountingVersion).toBe(3);
+    });
+
+    it("19-C. Missing legacy trade is a safe no-op (account created post-fix)", () => {
+      const account = createInitialBreakoutAccount();
+      account.accountingVersion = 2; // no legacy trade in tradeHistory
+      const cashBefore = account.cash;
+
+      const result = migrateBreakoutAccountV3(account);
+
+      expect(result.migrated).toBe(false);
+      expect(result.ghostCapital).toBe(0);
+      expect(result.error).toBeUndefined();
+      expect(account.accountingVersion).toBe(3);
+      expect(account.cash).toBe(cashBefore); // untouched
+    });
+
+    it("19-D. Unreasonably large ghost triggers safety guard without mutation", () => {
+      const account = buildLegacyAccount();
+      // Corrupt the quantity so ghost would exceed 50% of initialBalance
+      account.tradeHistory[0].quantity = 10000;
+      const cashBefore = account.cash;
+      const equityBefore = account.equity;
+
+      const result = migrateBreakoutAccountV3(account);
+
+      expect(result.migrated).toBe(false);
+      expect(result.error).toMatch(/outside safe bounds/);
+      // Account must NOT have been mutated
+      expect(account.cash).toBe(cashBefore);
+      expect(account.equity).toBe(equityBefore);
+      // accountingVersion stays at 2 — will retry on next load
+      expect(account.accountingVersion).toBe(2);
+    });
   });
 });
