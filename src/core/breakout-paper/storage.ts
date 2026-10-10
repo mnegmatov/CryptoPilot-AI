@@ -80,7 +80,7 @@ export function createInitialBreakoutAccount(): BreakoutAccount {
     positions: [],
     tradeHistory: [],
     version: 1,
-    accountingVersion: 2,
+    accountingVersion: 3,
     lastUpdated: Date.now(),
     lastProcessedCandles: {},
     lastExitTimestamps: {},
@@ -88,7 +88,11 @@ export function createInitialBreakoutAccount(): BreakoutAccount {
   };
 }
 
-
+/**
+ * v1 → v2: reserves open position notional from cash.
+ * This was the original accounting fix (commit c7803e0, 2026-09-28).
+ * It only ran against open positions; it did not correct legacy closed trades.
+ */
 function migrateLegacyBreakoutAccount(account: BreakoutAccount): BreakoutAccount {
   if ((account.accountingVersion ?? 1) >= 2) return account;
   const reservedPositionCapital = account.positions.reduce(
@@ -99,6 +103,114 @@ function migrateLegacyBreakoutAccount(account: BreakoutAccount): BreakoutAccount
   account.accountingVersion = 2;
   account.equity = account.cash + reservedPositionCapital + account.unrealizedPnl;
   return account;
+}
+
+/**
+ * v2 → v3: corrects ghost capital created by the very first legacy trade.
+ *
+ * Background
+ * ----------
+ * The first live trade (SOLUSDT Long, entered 2026-09-27, exited 2026-09-28)
+ * was opened under v1 accounting which did NOT deduct position notional from cash.
+ * The exit code (both legacy and v2) credited `positionSizeDollar + grossPnL − exitFee`
+ * back to cash. Because the notional was never debited, this created phantom capital
+ * equal to:
+ *
+ *   ghost = positionSizeDollar − entryFee
+ *         = (quantity × entryPrice) − (totalFees − exitFee)
+ *         = (quantity × entryPrice) − (totalFees − quantity × exitPrice × FEE_RATE)
+ *
+ * The v2 migration (migrateLegacyBreakoutAccount) only corrected open positions
+ * at the moment the fix deployed; because this trade had already closed, its ghost
+ * remained embedded in `account.cash`.
+ *
+ * Detection & Correction
+ * ----------------------
+ * We detect this condition by checking whether `accountingVersion` is exactly 2
+ * AND the specific legacy trade exists in `tradeHistory` (identified by the
+ * well-known trade ID which encodes its entry timestamp).
+ *
+ * The ghost amount is derived entirely from persisted ledger fields:
+ *   quantity, entryPrice, exitPrice, fees
+ * No hardcoded dollar amounts are used.
+ *
+ * Idempotency
+ * -----------
+ * The guard `accountingVersion >= 3` ensures this migration runs exactly once.
+ * It is also atomic because it runs inside the existing distributed Redis lock
+ * that wraps every `loadAccount → (mutate) → saveAccount` cycle.
+ *
+ * Safety checks
+ * -------------
+ * - If the legacy trade is not found, the migration is skipped cleanly (the
+ *   account may have been created after the fix, or already been corrected).
+ * - If the computed ghost is negative or unreasonably large, migration fails
+ *   explicitly rather than applying a nonsensical correction.
+ * - All trade history, positions, snapshots, and timestamps are preserved.
+ */
+export const LEGACY_GHOST_TRADE_ID = "trade_SOLUSDT_1790510400000";
+export const BREAKOUT_FEE_RATE = 0.0005;
+
+export function migrateBreakoutAccountV3(account: BreakoutAccount): {
+  migrated: boolean;
+  ghostCapital: number;
+  error?: string;
+} {
+  if ((account.accountingVersion ?? 1) >= 3) {
+    return { migrated: false, ghostCapital: 0 };
+  }
+
+  // Only applies to accounts that went through v2 but not v3
+  if ((account.accountingVersion ?? 1) !== 2) {
+    account.accountingVersion = 3;
+    return { migrated: false, ghostCapital: 0 };
+  }
+
+  const legacyTrade = account.tradeHistory.find(
+    (t) => t.id === LEGACY_GHOST_TRADE_ID
+  );
+
+  if (!legacyTrade) {
+    // No legacy trade found — this account was either created after the fix
+    // or was already migrated through a different path. Safe to skip.
+    account.accountingVersion = 3;
+    return { migrated: false, ghostCapital: 0 };
+  }
+
+  // Reconstruct ghost capital from persisted ledger data only.
+  // The entry fee was never separately stored for closed trades, but we can
+  // derive it:  totalFees = entryFee + exitFee,  exitFee = qty × exitPrice × FEE_RATE
+  const exitFee = legacyTrade.quantity * legacyTrade.exitPrice * BREAKOUT_FEE_RATE;
+  const entryFee = legacyTrade.fees - exitFee;
+  const positionNotional = legacyTrade.quantity * legacyTrade.entryPrice;
+  const ghostCapital = positionNotional - entryFee;
+
+  // Safety guard: ghost must be a reasonable positive value
+  if (!isFinite(ghostCapital) || ghostCapital <= 0 || ghostCapital > account.initialBalance * 0.5) {
+    return {
+      migrated: false,
+      ghostCapital: 0,
+      error: `v3 migration aborted: computed ghost capital $${ghostCapital.toFixed(4)} is outside safe bounds`,
+    };
+  }
+
+  // Apply correction
+  account.cash -= ghostCapital;
+  account.accountingVersion = 3;
+
+  // Recompute equity consistently
+  const reservedCapital = account.positions.reduce(
+    (sum, p) => sum + p.positionSizeDollar,
+    0
+  );
+  const totalUnrealizedPnl = account.positions.reduce(
+    (sum, p) => sum + p.unrealizedPnl,
+    0
+  );
+  account.equity = account.cash + reservedCapital + totalUnrealizedPnl;
+  account.unrealizedPnl = totalUnrealizedPnl;
+
+  return { migrated: true, ghostCapital };
 }
 
 function loadLocalFileAccount(): BreakoutAccount {
@@ -115,6 +227,16 @@ function loadLocalFileAccount(): BreakoutAccount {
         ) {
           if (!parsed.version) parsed.version = 1;
           migrateLegacyBreakoutAccount(parsed);
+          const v3Result = migrateBreakoutAccountV3(parsed);
+          if (v3Result.migrated) {
+            console.warn(
+              `[BreakoutStorage] v3 migration applied in dev: corrected ghost capital $${v3Result.ghostCapital.toFixed(4)}.` +
+              ` New cash: $${parsed.cash.toFixed(4)}, equity: $${parsed.equity.toFixed(4)}`
+            );
+          }
+          if (v3Result.error) {
+            console.error("[BreakoutStorage] v3 migration skipped:", v3Result.error);
+          }
           if (!parsed.lastProcessedCandles) parsed.lastProcessedCandles = {};
           if (!parsed.lastExitTimestamps) parsed.lastExitTimestamps = {};
           if (!parsed.stats) parsed.stats = createInitialBreakoutAccount().stats;
@@ -256,6 +378,23 @@ export class BreakoutStorageService {
       const account: BreakoutAccount = typeof data === "string" ? JSON.parse(data) : data;
       if (!account.lastProcessedCandles) account.lastProcessedCandles = {};
       migrateLegacyBreakoutAccount(account);
+      // Apply v3 migration (ghost capital correction).
+      // migrateBreakoutAccountV3 is idempotent: a no-op once accountingVersion >= 3.
+      // The caller (executeCycle) holds the Redis lock, so this is atomic.
+      const v3Result = migrateBreakoutAccountV3(account);
+      if (v3Result.error) {
+        // Safety guard triggered — log and throw rather than applying a bad correction.
+        const msg = `[BreakoutStorage] CRITICAL: v3 migration safety check failed: ${v3Result.error}`;
+        console.error(msg);
+        if (isProd) throw new Error(msg);
+      }
+      if (v3Result.migrated) {
+        console.log(
+          `[BreakoutStorage] v3 migration applied: corrected ghost capital $${v3Result.ghostCapital.toFixed(4)}.` +
+          ` New cash: $${account.cash.toFixed(4)}, equity: $${account.equity.toFixed(4)}.` +
+          ` Account will be persisted on next save (inside existing lock).`
+        );
+      }
       if (!account.lastExitTimestamps) account.lastExitTimestamps = {};
       if (!account.stats) account.stats = createInitialBreakoutAccount().stats;
       return account;

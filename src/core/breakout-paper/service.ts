@@ -328,43 +328,50 @@ export class BreakoutPaperService {
               const positionSizeDollar = units * actualEntryPrice;
               const entryFee = positionSizeDollar * config.feeRate;
               const entrySlippage = units * Math.abs(actualEntryPrice - rawEntryPrice);
+              const requiredCapital = positionSizeDollar + entryFee;
 
-              const newPosition: BreakoutPosition = {
-                id: `pos_${symbol}_${formingCandle.timestamp}`,
-                asset: symbol,
-                direction: sig.direction,
-                entryTimestamp: formingCandle.timestamp,
-                entryPrice: actualEntryPrice,
-                stopPrice,
-                initialStopDistance: stopDist,
-                units,
-                riskDollar,
-                positionSizeDollar,
-                feesPaid: entryFee,
-                slippagePaid: entrySlippage,
-                currentPrice: livePrice,
-                unrealizedPnl: 0,
-                unrealizedPnlPercent: 0,
-                unrealizedR: 0,
-                highestPriceSinceEntry: actualEntryPrice,
-                lowestPriceSinceEntry: actualEntryPrice,
-                breakoutTimestamp: sig.breakoutTimestamp,
-                breakoutLevel: sig.breakoutLevel,
-                breakoutVolRatio: sig.volRatio,
-                channelExitLevel: sig.direction === "LONG" ? techLevels.ll10 : techLevels.hh10,
-              };
+              if (account.cash < requiredCapital) {
+                console.warn(
+                  `[BreakoutPaper] Insufficient free cash to open ${symbol} position. Required: $${requiredCapital.toFixed(2)}, Available cash: $${account.cash.toFixed(2)}. Skipping entry.`
+                );
+              } else {
+                const newPosition: BreakoutPosition = {
+                  id: `pos_${symbol}_${formingCandle.timestamp}`,
+                  asset: symbol,
+                  direction: sig.direction,
+                  entryTimestamp: formingCandle.timestamp,
+                  entryPrice: actualEntryPrice,
+                  stopPrice,
+                  initialStopDistance: stopDist,
+                  units,
+                  riskDollar,
+                  positionSizeDollar,
+                  feesPaid: entryFee,
+                  slippagePaid: entrySlippage,
+                  currentPrice: livePrice,
+                  unrealizedPnl: 0,
+                  unrealizedPnlPercent: 0,
+                  unrealizedR: 0,
+                  highestPriceSinceEntry: actualEntryPrice,
+                  lowestPriceSinceEntry: actualEntryPrice,
+                  breakoutTimestamp: sig.breakoutTimestamp,
+                  breakoutLevel: sig.breakoutLevel,
+                  breakoutVolRatio: sig.volRatio,
+                  channelExitLevel: sig.direction === "LONG" ? techLevels.ll10 : techLevels.hh10,
+                };
 
-              // Reserve the position notional in cash. Entry fee is an additional cash outflow.
-              // This keeps cash + marked position value consistent with equity while the trade is open.
-              account.cash -= positionSizeDollar + entryFee;
-              account.fees += entryFee;
-              account.slippagePaid += entrySlippage;
-              account.positions.push(newPosition);
-              openedPositionsThisCycle.push(newPosition);
-              account.lastProcessedCandles[symbol] = sig.breakoutTimestamp;
+                // Reserve the position notional in cash. Entry fee is an additional cash outflow.
+                // This keeps cash + marked position value consistent with equity while the trade is open.
+                account.cash -= requiredCapital;
+                account.fees += entryFee;
+                account.slippagePaid += entrySlippage;
+                account.positions.push(newPosition);
+                openedPositionsThisCycle.push(newPosition);
+                account.lastProcessedCandles[symbol] = sig.breakoutTimestamp;
 
-              sig.status = "EXECUTED";
-              state = "POSITION OPEN";
+                sig.status = "EXECUTED";
+                state = "POSITION OPEN";
+              }
             }
           }
         }
