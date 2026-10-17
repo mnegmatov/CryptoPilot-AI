@@ -70,18 +70,30 @@ describe("Cron Authentication & Multi-Provider Verification Suite", () => {
     expect(result.method).toBe("forwarded_secret");
   });
 
-  it("5. Authorizes query parameter '?key=<CRON_SECRET>'", async () => {
+  it("5. Strictly REJECTS query parameter '?key=<CRON_SECRET>' in production to prevent log leakage", async () => {
     process.env.CRON_SECRET = "test-secret-123";
     process.env.NODE_ENV = "production";
 
     const req = new NextRequest("https://example.com/api/cron/breakout?key=test-secret-123");
     const result = await verifyCronAuthorization(req);
 
+    expect(result.authorized).toBe(false);
+    expect(result.reason).toContain("Unauthorized");
+  });
+
+  it("6. Allows query parameter '?key=<CRON_SECRET>' in development environment for convenience", async () => {
+    process.env.CRON_SECRET = "test-secret-123";
+    delete process.env.VERCEL;
+    process.env.NODE_ENV = "development";
+
+    const req = new NextRequest("http://localhost:3000/api/cron/breakout?key=test-secret-123");
+    const result = await verifyCronAuthorization(req);
+
     expect(result.authorized).toBe(true);
     expect(result.method).toBe("url_key");
   });
 
-  it("6. In development environment with no secret configured, allows dev_bypass", async () => {
+  it("7. In development environment with no secret configured, allows dev_bypass", async () => {
     delete process.env.CRON_SECRET;
     delete process.env.QSTASH_CURRENT_SIGNING_KEY;
     delete process.env.VERCEL;
@@ -94,7 +106,7 @@ describe("Cron Authentication & Multi-Provider Verification Suite", () => {
     expect(result.method).toBe("dev_bypass");
   });
 
-  it("7. In production environment with no secret configured, strictly rejects", async () => {
+  it("8. In production environment with no secret configured, strictly rejects", async () => {
     delete process.env.CRON_SECRET;
     delete process.env.QSTASH_CURRENT_SIGNING_KEY;
     process.env.NODE_ENV = "production";
