@@ -931,4 +931,25 @@ describe("Model Breakout V2-AD — Paper Trading Test Suite", () => {
       expect(report.account.cash).toBeGreaterThanOrEqual(0);
     });
   });
+
+  describe("21. Debounce Guard & Concurrency Protection", () => {
+    it("21-A. Skips redundant execution if executed within 60s of previous cycle", async () => {
+      const account = createInitialBreakoutAccount();
+      const baseNow = 1700000020000;
+      
+      // When saveAccount is called, time is baseNow - 20000 (20s earlier)
+      const dateSpy = vi.spyOn(Date, "now");
+      dateSpy.mockReturnValueOnce(baseNow - 20000);
+      await BreakoutStorageService.saveAccount(account);
+
+      // When executeCycle is called, time is baseNow
+      dateSpy.mockReturnValue(baseNow);
+
+      const report = await BreakoutPaperService.executeCycle();
+
+      expect(report.skipped).toBe(true);
+      expect(report.skipReason).toContain("already executed");
+      expect(report.skipReason).toContain("20s ago");
+    });
+  });
 });

@@ -140,6 +140,8 @@ export interface BreakoutTelemetry {
 export interface BreakoutCycleReport {
   timestamp: number;
   success: boolean;
+  skipped?: boolean;
+  skipReason?: string;
   telemetries: Record<string, BreakoutTelemetry>;
   account: BreakoutAccount;
   closedTradesThisCycle: BreakoutClosedTrade[];

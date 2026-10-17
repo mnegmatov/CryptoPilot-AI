@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BreakoutPaperService } from "@/core/breakout-paper/service";
+import { verifyCronAuthorization } from "@/core/security/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -9,21 +10,19 @@ export const revalidate = 0;
  * Evaluates real Binance 4H public market data, manages stop losses & channel exits,
  * and enters positions on completed 4H candle breakouts at T+1 OPEN.
  * Zero connection to Model D or real-money trading.
+ *
+ * Supports execution via:
+ * - Upstash QStash (GET / POST with Upstash-Forward-Authorization or Upstash-Signature)
+ * - cron-job.org / external cron (GET / POST with Authorization: Bearer <CRON_SECRET>)
+ * - GitHub Actions (GET with Authorization: Bearer <CRON_SECRET>)
  */
-export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    const urlKey = request.nextUrl.searchParams.get("key");
-    const isAuthorized =
-      authHeader === `Bearer ${cronSecret}` || urlKey === cronSecret;
-
-    if (!isAuthorized) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized: Invalid CRON_SECRET" },
-        { status: 401 }
-      );
-    }
+async function handleBreakoutCron(request: NextRequest) {
+  const auth = await verifyCronAuthorization(request);
+  if (!auth.authorized) {
+    return NextResponse.json(
+      { success: false, error: auth.reason || "Unauthorized" },
+      { status: 401 }
+    );
   }
 
   try {
@@ -34,6 +33,9 @@ export async function GET(request: NextRequest) {
       timestamp: report.timestamp,
       model: "Breakout V2-AD",
       mode: "PAPER TRADING",
+      authMethod: auth.method,
+      skipped: report.skipped || false,
+      skipReason: report.skipReason || null,
       account: {
         equity: report.account.equity,
         cash: report.account.cash,
@@ -90,4 +92,12 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  return handleBreakoutCron(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handleBreakoutCron(request);
 }

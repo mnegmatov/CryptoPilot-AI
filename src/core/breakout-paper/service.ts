@@ -148,6 +148,21 @@ export class BreakoutPaperService {
       // Track prices for snapshot
       const priceMap: Record<string, number> = {};
 
+      // Debounce Guard: prevent redundant execution within 60 seconds if no custom test data is supplied
+      const DEBOUNCE_INTERVAL_MS = 60 * 1000;
+      if (!customCandlesMap && account.lastUpdated && (now - account.lastUpdated < DEBOUNCE_INTERVAL_MS)) {
+        return {
+          timestamp: now,
+          success: true,
+          skipped: true,
+          skipReason: `Cycle skipped: already executed ${Math.round((now - account.lastUpdated) / 1000)}s ago (debounce threshold is 60s)`,
+          telemetries: {},
+          account,
+          closedTradesThisCycle: [],
+          openedPositionsThisCycle: [],
+        };
+      }
+
       for (const symbol of BREAKOUT_UNIVERSE) {
         // 1. Fetch market data
         const candles = customCandlesMap?.[symbol] ?? (await this.fetchRealCandles(symbol, 60));

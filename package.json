@@ -7,10 +7,12 @@
     "build": "next build",
     "start": "next start -p 3000 -H 0.0.0.0",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "qstash:setup": "tsx scripts/setup-qstash.ts"
   },
   "dependencies": {
     "@google/genai": "^2.22.0",
+    "@upstash/qstash": "^2.12.0",
     "@upstash/redis": "^1.38.4",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.4",
