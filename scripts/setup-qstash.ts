@@ -136,7 +136,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const client = new Client({ token });
+  const clientOptions: { token: string; baseUrl?: string } = { token };
+  if (process.env.QSTASH_URL) {
+    clientOptions.baseUrl = process.env.QSTASH_URL.replace(/\/+$/, "");
+  }
+  const client = new Client(clientOptions);
 
   const breakoutEndpoint = `${baseUrl}/api/cron/breakout`;
   const modelDEndpoint = `${baseUrl}/api/cron/model-d`;
