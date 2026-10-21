@@ -29,24 +29,55 @@
 ## 3. Вариант 1: Автоматическая настройка через Upstash QStash (1 команда)
 
 Проект CryptoPilot AI уже использует Upstash Redis. Консоль QStash доступна в том же аккаунте Upstash.
+Скрипт `scripts/setup-qstash.mjs` выполняется напрямую нативно в Node.js без установки дополнительных пакетов или компиляторов (`tsx`).
 
-### Шаг 1. Получите `QSTASH_TOKEN`
+### Шаг 1. Получите `QSTASH_TOKEN` и `CRON_SECRET`
 1. Войдите в [Upstash Console](https://console.upstash.com).
 2. В верхнем меню выберите **QStash**.
 3. Нажмите кнопку **Copy** рядом с `QSTASH_TOKEN`.
+4. В панели [Vercel Dashboard](https://vercel.com) проекта проверьте значение `CRON_SECRET` в разделе **Settings -> Environment Variables**.
 
-### Шаг 2. Запустите автоматический скрипт
-В терминале проекта выполните:
+### Шаг 2. Запустите автоматический скрипт через переменные окружения
+Чтобы секреты не сохранялись в истории терминала (`~/.zsh_history`), передавайте их через переменные окружения:
+
 ```bash
-npm run qstash:setup -- --token=<ВАШ_QSTASH_TOKEN> --secret=<ВАШ_CRON_SECRET>
+# 1. Проверить текущие расписания в QStash (режим только для чтения, без изменений):
+export QSTASH_TOKEN="<ВАШ_QSTASH_TOKEN>"
+npm run qstash:setup -- --action=list
+
+# 2. Создать / обновить расписания для CryptoPilot:
+export CRON_SECRET="<ВАШ_CRON_SECRET>"
+npm run qstash:setup
 ```
 
 Скрипт автоматически:
-- Проверит существующие расписания, чтобы не допустить дублирования;
+- Проверит существующие расписания в аккаунте;
+- Заменит только расписания CryptoPilot AI, не трогая другие задачи в вашем Upstash аккаунте;
 - Создаст расписание для **Breakout V2-AD** (`*/10 * * * *` -> `/api/cron/breakout`);
 - Создаст расписание для **Model D** (`*/10 * * * *` -> `/api/cron/model-d`);
-- Установит 3 автоматических повтора при сетевых сбоях;
-- Привяжет безопасный заголовок авторизации `Authorization: Bearer <CRON_SECRET>`.
+- Установит 3 автоматических повтора с экспоненциальной задержкой при сбоях;
+- Привяжет безопасный заголовок `Authorization: Bearer <CRON_SECRET>`.
+
+### Дополнительные команды управления:
+```bash
+# Просмотр активных расписаний (read-only аудит):
+npm run qstash:setup -- --action=list
+
+# Удаление только расписаний CryptoPilot:
+npm run qstash:setup -- --action=delete
+```
+
+---
+
+## 4. Ограничения тарифов Vercel Hobby и Upstash QStash Free
+
+| Платформа | Метрика / Лимит тарифа | Расход CryptoPilot (интервал 10 мин) | Статус |
+| :--- | :--- | :--- | :--- |
+| **QStash Free** | **500 запросов/день** | 2 расписания × 144 запуска = **288 запросов/день** | ✅ **57.6% квоты**, с запасом на повторы |
+| **QStash Free** | **Конкурентность 5** | 2 параллельных задачи в момент запуска | ✅ В пределах лимита (2 < 5) |
+| **Vercel Hobby** | **Встроенный vercel.json cron** | Лимит: **1 раз в сутки** (не подходит для 10 мин) | ℹ️ Причина использования внешнего QStash |
+| **Vercel Hobby** | **Serverless Function invocations** | Лимит: **100,000 в месяц** (CryptoPilot: ~8,640/мес) | ✅ **<9% квоты** |
+| **Vercel Hobby** | **Function execution timeout** | Макс. **10 секунд** на вызов | ✅ Циклы выполняются за 0.8–2.5 сек |
 
 ---
 
@@ -93,8 +124,32 @@ npm run qstash:setup -- --token=<ВАШ_QSTASH_TOKEN> --secret=<ВАШ_CRON_SECR
 
 ---
 
-## 6. Отключение GitHub Actions (по желанию)
+## 6. Отключение расписания GitHub Actions (для экономии минут)
 
-После того как вы активировали QStash или cron-job.org, вы можете отключить расписание GitHub Actions, чтобы не тратить лимиты минут репозитория:
+После того как вы активировали QStash или cron-job.org, расписание GitHub Actions можно отключить одним из двух способов:
+
+**Способ A (через репозиторную переменную):**
+- Перейдите в GitHub -> **Settings** -> **Secrets and variables** -> **Actions** -> вкладка **Variables**.
+- Добавьте переменную `ENABLE_GITHUB_ACTIONS_CRON` со значением `false`.
+- Расписание перестанет запускаться, но ручной запуск (**Run workflow**) останется доступен.
+
+**Способ B (в интерфейсе GitHub Actions):**
 - Перейдите в GitHub -> **Actions** -> **Model D Scheduler** -> `...` -> **Disable workflow**.
 - Перейдите в GitHub -> **Actions** -> **Breakout Paper Scheduler** -> `...` -> **Disable workflow**.
+
+---
+
+## 7. Справочник переменных окружения
+
+| Переменная | Где настраивается | Обязательность | Назначение |
+| :--- | :--- | :--- | :--- |
+| `CRON_SECRET` | **Vercel** (Production) & **GitHub Secrets** | **Обязательно** | Секретный токен для авторизации запросов к `/api/cron/breakout` и `/api/cron/model-d`. |
+| `UPSTASH_REDIS_REST_URL` | **Vercel** (Production) | **Обязательно** | URL базы данных Upstash Redis для сохранения сделок и распределённых блокировок. |
+| `UPSTASH_REDIS_REST_TOKEN` | **Vercel** (Production) | **Обязательно** | Токен доступа к Upstash Redis REST API. |
+| `QSTASH_TOKEN` | **Локальный терминал** при запуске скрипта | **Только при настройке QStash** | Токен API Upstash QStash для создания расписаний через `npm run qstash:setup`. В Vercel не требуется. |
+| `QSTASH_CURRENT_SIGNING_KEY` | **Vercel** (Production) | Опционально | Публичный ключ для проверки криптографических подписей QStash HMAC-SHA256. |
+| `QSTASH_NEXT_SIGNING_KEY` | **Vercel** (Production) | Опционально | Ключ ротации для бесшовной смены ключей QStash. |
+| `GEMINI_API_KEY` | **Vercel** (Production) | Опционально | Ключ Gemini API для ИИ-анализа рынка (при отсутствии используется детерминированный движок). |
+| `ENABLE_GITHUB_ACTIONS_CRON` | **GitHub Repo Variables** | Опционально (`true`/`false`) | Флаг включения/отключения запусков по расписанию в GitHub Actions (по умолчанию включён как резервный). |
+| `BREAKOUT_CRON_URL` | **GitHub Repo Variables** | Для GitHub Actions | URL целевого эндпоинта (`https://crypto-pilot-ai-beta.vercel.app/api/cron/breakout`). |
+| `MODEL_D_CRON_URL` | **GitHub Repo Variables** | Для GitHub Actions | URL целевого эндпоинта (`https://crypto-pilot-ai-beta.vercel.app/api/cron/model-d`). |

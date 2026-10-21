@@ -3,8 +3,39 @@ node_modules
 out
 build
 .DS_Store
-data/historical/*.csv
+Thumbs.db
+
+# macOS duplicate files (e.g., "filename 2.ext")
+* 2.*
+
+# Environment & Secrets (NEVER commit secrets)
+.env
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel deployment artifacts
+.vercel
+
+# Paper trading runtime state files (local cache)
 data/paper_trading_state.json
+data/*_paper_trading_state.json
+data/breakout_paper_trading_state.json
+
+# Historical market data & generated distributions
+data/historical/*.csv
 research/reports/equity_curves.json
 research/reports/monte_carlo_distributions.json
+research_output.json
+
+# Scratch, debugging, and temporary scripts
+fix_*.js
+test*.js
+test_*.js
+format_results.js
+
+# Transpiled JS artifacts in src (source is TypeScript)
+src/**/*.js
 
