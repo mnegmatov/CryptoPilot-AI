@@ -1,0 +1,468 @@
+import { Candle } from "../types";
+import { fetchBinanceKlines, fetchBinance24hrTicker } from "../data/binance";
+import { validateCandles } from "../data/market-feed";
+import { V3StorageService } from "./storage";
+import { evaluateBreakoutLevelsV3, checkPositionExitV3, V3_CONFIG, V3StrategyConfig } from "./strategy";
+import {
+  BreakoutAccount,
+  BreakoutClosedTrade,
+  BreakoutCycleReport,
+  BreakoutPosition,
+  BreakoutSnapshot,
+  BreakoutTelemetry,
+  BreakoutAssetState,
+} from "./types";
+
+export const V3_UNIVERSE = ["BTCUSDT", "ETHUSDT", "SOLUSDT"] as const;
+const FOUR_HOURS_MS = 4 * 3600 * 1000;
+
+export class BreakoutV3Service {
+  /**
+   * Returns the current Breakout V3 Paper Trading account
+   */
+  static async getAccount(): Promise<BreakoutAccount> {
+    return V3StorageService.loadAccount();
+  }
+
+  /**
+   * Resets the Breakout V3 Paper Trading account back to initial $10,000 balance
+   */
+  static async resetAccount(): Promise<BreakoutAccount> {
+    return V3StorageService.resetAccount();
+  }
+
+  /**
+   * Returns recent snapshots
+   */
+  static async getSnapshots(limit: number = 100): Promise<BreakoutSnapshot[]> {
+    return V3StorageService.getSnapshots(limit);
+  }
+
+  /**
+   * Fetches real public candles from Binance without synthetic or fallback fake values
+   */
+  static async fetchRealCandles(symbol: string, limit: number = 60): Promise<Candle[]> {
+    try {
+      const raw = await fetchBinanceKlines(symbol, "4h", limit);
+      return validateCandles(raw);
+    } catch (err: any) {
+      console.error(`[BreakoutV3] Binance public data fetch failed for ${symbol}:`, err);
+      throw new Error(`Real Binance 4H data unavailable for ${symbol}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Fetches real live price from Binance ticker
+   */
+  static async fetchLivePrice(symbol: string): Promise<number> {
+    try {
+      const ticker = await fetchBinance24hrTicker(symbol);
+      if (!ticker || typeof ticker.lastPrice !== "number" || ticker.lastPrice <= 0) {
+        throw new Error(`Invalid ticker response for ${symbol}`);
+      }
+      return ticker.lastPrice;
+    } catch (err: any) {
+      console.error(`[BreakoutV3] Failed to fetch live price for ${symbol}:`, err);
+      throw new Error(`Real Binance live price unavailable for ${symbol}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Recalculates account-level performance statistics
+   */
+  static updateAccountStats(account: BreakoutAccount): void {
+    const trades = account.tradeHistory;
+    const totalTrades = trades.length;
+    const wins = trades.filter((t) => t.netPnl > 0);
+    const losses = trades.filter((t) => t.netPnl <= 0);
+
+    const winningTrades = wins.length;
+    const losingTrades = losses.length;
+    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+
+    const totalWinDollar = wins.reduce((sum, t) => sum + t.netPnl, 0);
+    const totalLossDollar = Math.abs(losses.reduce((sum, t) => sum + t.netPnl, 0));
+    const profitFactor = totalLossDollar > 0 ? totalWinDollar / totalLossDollar : totalWinDollar > 0 ? 99.9 : 0;
+
+    const expectancy =
+      totalTrades > 0 ? trades.reduce((sum, t) => sum + t.rMultiple, 0) / totalTrades : 0;
+
+    const largestWin = wins.length > 0 ? Math.max(...wins.map((t) => t.netPnl)) : 0;
+    const largestLoss = losses.length > 0 ? Math.min(...losses.map((t) => t.netPnl)) : 0;
+
+    let longestStreak = 0;
+    let currentStreak = 0;
+    for (const t of trades) {
+      if (t.netPnl <= 0) {
+        currentStreak++;
+        if (currentStreak > longestStreak) longestStreak = currentStreak;
+      } else {
+        currentStreak = 0;
+      }
+    }
+
+    if (account.equity > account.stats.peakEquity) {
+      account.stats.peakEquity = account.equity;
+    }
+    const currentDrawdown =
+      account.stats.peakEquity > 0
+        ? ((account.stats.peakEquity - account.equity) / account.stats.peakEquity) * 100
+        : 0;
+    const maxDrawdown = Math.max(account.stats.maxDrawdown, currentDrawdown);
+
+    // Count exit reasons
+    const channelExits = trades.filter((t) => t.exitReason === "CHANNEL_EXIT").length;
+    const stopLosses = trades.filter((t) => t.exitReason === "STOP_LOSS").length;
+
+    account.stats = {
+      totalTrades,
+      winningTrades,
+      losingTrades,
+      winRate,
+      profitFactor,
+      expectancy,
+      maxDrawdown,
+      currentDrawdown,
+      peakEquity: account.stats.peakEquity,
+      largestWin,
+      largestLoss,
+      longestLosingStreak: longestStreak,
+      currentLosingStreak: currentStreak,
+    };
+  }
+
+  /**
+   * Main execution cycle for Model Breakout V3.
+   * Identical accounting model as V2-AD but with:
+   * - Fixed channel exit (prior10 excludes candle T)
+   * - ADX + EMA regime filter
+   * - ATR multiplier 2.2
+   * - Separate Redis namespace
+   */
+  static async executeCycle(
+    config: V3StrategyConfig = V3_CONFIG,
+    customCandlesMap?: Record<string, Candle[]>,
+    customPricesMap?: Record<string, number>
+  ): Promise<BreakoutCycleReport> {
+    const unlock = await V3StorageService.acquireLock();
+
+    try {
+      const account = await V3StorageService.loadAccount();
+      const telemetries: Record<string, BreakoutTelemetry> = {};
+      const closedTradesThisCycle: BreakoutClosedTrade[] = [];
+      const openedPositionsThisCycle: BreakoutPosition[] = [];
+      const now = Date.now();
+
+      // Track prices for snapshot
+      const priceMap: Record<string, number> = {};
+
+      // Debounce Guard: prevent redundant execution within 60 seconds if no custom test data
+      const DEBOUNCE_INTERVAL_MS = 60 * 1000;
+      if (!customCandlesMap && account.lastUpdated && (now - account.lastUpdated < DEBOUNCE_INTERVAL_MS)) {
+        return {
+          timestamp: now,
+          success: true,
+          skipped: true,
+          skipReason: `Cycle skipped: already executed ${Math.round((now - account.lastUpdated) / 1000)}s ago (debounce threshold is 60s)`,
+          telemetries: {},
+          account,
+          closedTradesThisCycle: [],
+          openedPositionsThisCycle: [],
+        };
+      }
+
+      for (const symbol of V3_UNIVERSE) {
+        // 1. Fetch market data
+        const candles = customCandlesMap?.[symbol] ?? (await this.fetchRealCandles(symbol, 60));
+        const livePrice = customPricesMap?.[symbol] ?? (await this.fetchLivePrice(symbol));
+        priceMap[symbol] = livePrice;
+
+        // 2. Separate completed 4H candles from forming candle
+        const completedCandles = candles.filter((c) => c.timestamp + FOUR_HOURS_MS <= now);
+        const formingCandles = candles.filter((c) => c.timestamp + FOUR_HOURS_MS > now);
+        const formingCandle = formingCandles.length > 0 ? formingCandles[formingCandles.length - 1] : null;
+
+        if (completedCandles.length < 55) {
+          throw new Error(`Insufficient completed candles for ${symbol} (need >= 55 for V3 with EMA50)`);
+        }
+
+        const latestCompleted = completedCandles[completedCandles.length - 1]; // Candle T
+        const existingPosition = account.positions.find((p) => p.asset === symbol) || null;
+
+        // 3. Compute cooldown
+        const lastExitTs = account.lastExitTimestamps[symbol] || 0;
+        const barsSinceExit = lastExitTs > 0 ? Math.floor((latestCompleted.timestamp - lastExitTs) / FOUR_HOURS_MS) : 999;
+        const cooldownRemainingBars = Math.max(0, config.cooldownCandles - barsSinceExit);
+
+        // 4. Evaluate technical levels & breakout (V3: fixed channel + ADX/EMA filter)
+        const techLevels = evaluateBreakoutLevelsV3(
+          symbol,
+          completedCandles,
+          existingPosition !== null,
+          cooldownRemainingBars,
+          config
+        );
+
+        let state: BreakoutAssetState = "WAIT";
+
+        // 5. Handle existing open position
+        if (existingPosition) {
+          state = "POSITION OPEN";
+
+          // Update position live metrics
+          existingPosition.currentPrice = livePrice;
+          if (livePrice > existingPosition.highestPriceSinceEntry) {
+            existingPosition.highestPriceSinceEntry = livePrice;
+          }
+          if (livePrice < existingPosition.lowestPriceSinceEntry) {
+            existingPosition.lowestPriceSinceEntry = livePrice;
+          }
+
+          if (existingPosition.direction === "LONG") {
+            existingPosition.unrealizedPnl =
+              existingPosition.units * (livePrice - existingPosition.entryPrice);
+          } else {
+            existingPosition.unrealizedPnl =
+              existingPosition.units * (existingPosition.entryPrice - livePrice);
+          }
+          existingPosition.unrealizedPnlPercent =
+            (existingPosition.unrealizedPnl / existingPosition.positionSizeDollar) * 100;
+          existingPosition.unrealizedR =
+            existingPosition.riskDollar > 0
+              ? existingPosition.unrealizedPnl / existingPosition.riskDollar
+              : 0;
+          existingPosition.channelExitLevel =
+            existingPosition.direction === "LONG" ? techLevels.ll10 : techLevels.hh10;
+
+          // Check if exit condition is triggered (V3 exit function)
+          const exitCheck = checkPositionExitV3(
+            existingPosition,
+            latestCompleted,
+            livePrice,
+            { hh10: techLevels.hh10, ll10: techLevels.ll10 },
+            config
+          );
+
+          if (exitCheck && exitCheck.shouldExit) {
+            state = "EXIT";
+            const exitPrice = exitCheck.exitPrice;
+            const exitNotional = existingPosition.units * exitPrice;
+            const exitFee = exitNotional * config.feeRate;
+            const exitSlippage =
+              existingPosition.units * Math.abs(exitPrice - (exitCheck.exitReason === "STOP_LOSS" ? existingPosition.stopPrice : latestCompleted.close));
+
+            const totalFees = existingPosition.feesPaid + exitFee;
+            const totalSlippage = existingPosition.slippagePaid + exitSlippage;
+
+            let grossPnl = 0;
+            if (existingPosition.direction === "LONG") {
+              grossPnl = existingPosition.units * (exitPrice - existingPosition.entryPrice);
+            } else {
+              grossPnl = existingPosition.units * (existingPosition.entryPrice - exitPrice);
+            }
+            const netPnl = grossPnl - totalFees;
+            const rMultiple = existingPosition.riskDollar > 0 ? netPnl / existingPosition.riskDollar : 0;
+            const holdingDurationHours =
+              Math.max(1, (now - existingPosition.entryTimestamp) / (3600 * 1000));
+
+            const closedTrade: BreakoutClosedTrade = {
+              id: `v3_trade_${symbol}_${existingPosition.entryTimestamp}`,
+              asset: symbol,
+              direction: existingPosition.direction,
+              breakoutTimestamp: existingPosition.breakoutTimestamp,
+              breakoutLevel: existingPosition.breakoutLevel,
+              entryTimestamp: existingPosition.entryTimestamp,
+              entryPrice: existingPosition.entryPrice,
+              stopPrice: existingPosition.stopPrice,
+              exitTimestamp: now,
+              exitPrice,
+              exitReason: exitCheck.exitReason,
+              quantity: existingPosition.units,
+              riskDollar: existingPosition.riskDollar,
+              fees: totalFees,
+              slippage: totalSlippage,
+              grossPnl,
+              netPnl,
+              pnlPercent: (netPnl / existingPosition.positionSizeDollar) * 100,
+              rMultiple,
+              holdingDurationHours,
+            };
+
+            // Update cash and account
+            account.cash += existingPosition.positionSizeDollar + grossPnl - exitFee;
+            account.realizedPnl += netPnl;
+            account.fees += totalFees;
+            account.slippagePaid += totalSlippage;
+            account.tradeHistory.push(closedTrade);
+            closedTradesThisCycle.push(closedTrade);
+
+            // Record exit timestamp for cooldown
+            account.lastExitTimestamps[symbol] = latestCompleted.timestamp;
+
+            // Remove from open positions
+            account.positions = account.positions.filter((p) => p.id !== existingPosition.id);
+          }
+        } else {
+          // 6. No existing position: check for new breakout execution
+          if (techLevels.signal && techLevels.signal.status === "ACTIVE") {
+            state = "BREAKOUT DETECTED";
+
+            const sig = techLevels.signal;
+            const lastProcessed = account.lastProcessedCandles[symbol] || 0;
+
+            const isNewSignalCandle = sig.breakoutTimestamp > lastProcessed;
+            const isCandleTPlus1 =
+              formingCandle !== null && formingCandle.timestamp === sig.breakoutTimestamp + FOUR_HOURS_MS;
+
+            const isWithinTPlus1Window =
+              now >= sig.breakoutTimestamp + FOUR_HOURS_MS &&
+              now < sig.breakoutTimestamp + 2 * FOUR_HOURS_MS;
+
+            if (isNewSignalCandle && isCandleTPlus1 && isWithinTPlus1Window) {
+              // Execute entry at T+1 OPEN with slippage
+              const rawEntryPrice = formingCandle.open;
+              const actualEntryPrice =
+                sig.direction === "LONG"
+                  ? rawEntryPrice * (1 + config.slippageRate)
+                  : rawEntryPrice * (1 - config.slippageRate);
+
+              const stopDist = config.atrMultiplier * sig.atr;
+              const stopPrice =
+                sig.direction === "LONG"
+                  ? actualEntryPrice - stopDist
+                  : actualEntryPrice + stopDist;
+
+              const currentEquity =
+                account.cash +
+                account.positions.reduce(
+                  (acc, p) => acc + p.positionSizeDollar + p.unrealizedPnl,
+                  0
+                );
+              const riskDollar = currentEquity * (config.riskPerTradePercent / 100);
+              const units = riskDollar / stopDist;
+              const positionSizeDollar = units * actualEntryPrice;
+              const entryFee = positionSizeDollar * config.feeRate;
+              const entrySlippage = units * Math.abs(actualEntryPrice - rawEntryPrice);
+              const requiredCapital = positionSizeDollar + entryFee;
+
+              if (account.cash < requiredCapital) {
+                console.warn(
+                  `[BreakoutV3] Insufficient free cash to open ${symbol} position. Required: $${requiredCapital.toFixed(2)}, Available cash: $${account.cash.toFixed(2)}. Skipping entry.`
+                );
+              } else {
+                const newPosition: BreakoutPosition = {
+                  id: `v3_pos_${symbol}_${formingCandle.timestamp}`,
+                  asset: symbol,
+                  direction: sig.direction,
+                  entryTimestamp: formingCandle.timestamp,
+                  entryPrice: actualEntryPrice,
+                  stopPrice,
+                  initialStopDistance: stopDist,
+                  units,
+                  riskDollar,
+                  positionSizeDollar,
+                  feesPaid: entryFee,
+                  slippagePaid: entrySlippage,
+                  currentPrice: livePrice,
+                  unrealizedPnl: 0,
+                  unrealizedPnlPercent: 0,
+                  unrealizedR: 0,
+                  highestPriceSinceEntry: actualEntryPrice,
+                  lowestPriceSinceEntry: actualEntryPrice,
+                  breakoutTimestamp: sig.breakoutTimestamp,
+                  breakoutLevel: sig.breakoutLevel,
+                  breakoutVolRatio: sig.volRatio,
+                  channelExitLevel: sig.direction === "LONG" ? techLevels.ll10 : techLevels.hh10,
+                };
+
+                // Reserve the position notional in cash
+                account.cash -= requiredCapital;
+                account.fees += entryFee;
+                account.slippagePaid += entrySlippage;
+                account.positions.push(newPosition);
+                openedPositionsThisCycle.push(newPosition);
+                account.lastProcessedCandles[symbol] = sig.breakoutTimestamp;
+
+                sig.status = "EXECUTED";
+                state = "POSITION OPEN";
+              }
+            }
+          }
+        }
+
+        // 7. Store telemetry for asset
+        telemetries[symbol] = {
+          asset: symbol,
+          state,
+          currentPrice: livePrice,
+          hh20: techLevels.hh20,
+          ll20: techLevels.ll20,
+          channelExitLevel: techLevels.ll10,
+          volumeRatio: techLevels.volRatio,
+          atr14: techLevels.atr14,
+          cooldownRemainingBars,
+          lastCompletedCandle: {
+            timestamp: latestCompleted.timestamp,
+            open: latestCompleted.open,
+            high: latestCompleted.high,
+            low: latestCompleted.low,
+            close: latestCompleted.close,
+            volume: latestCompleted.volume,
+          },
+          formingCandle: formingCandle
+            ? {
+                timestamp: formingCandle.timestamp,
+                open: formingCandle.open,
+                high: formingCandle.high,
+                low: formingCandle.low,
+                close: formingCandle.close,
+              }
+            : null,
+          pendingSignal: techLevels.signal,
+          activePosition: account.positions.find((p) => p.asset === symbol) || null,
+          lastExitTimestamp: lastExitTs > 0 ? lastExitTs : null,
+        };
+      }
+
+      // 8. Recompute total account equity & unrealized PnL
+      const totalUnrealizedPnl = account.positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+      const reservedPositionCapital = account.positions.reduce(
+        (sum, p) => sum + p.positionSizeDollar,
+        0
+      );
+      account.unrealizedPnl = totalUnrealizedPnl;
+      account.equity = account.cash + reservedPositionCapital + totalUnrealizedPnl;
+
+      // 9. Update stats
+      this.updateAccountStats(account);
+
+      // 10. Persist periodic snapshot
+      const snapshot: BreakoutSnapshot = {
+        timestamp: now,
+        equity: account.equity,
+        cash: account.cash,
+        unrealizedPnl: account.unrealizedPnl,
+        realizedPnl: account.realizedPnl,
+        openPositions: account.positions.length,
+        btcPrice: priceMap["BTCUSDT"] || 0,
+        ethPrice: priceMap["ETHUSDT"] || 0,
+        solPrice: priceMap["SOLUSDT"] || 0,
+      };
+      await V3StorageService.saveSnapshot(snapshot);
+
+      // 11. Persist updated account
+      await V3StorageService.saveAccount(account);
+
+      return {
+        timestamp: now,
+        success: true,
+        telemetries,
+        account,
+        closedTradesThisCycle,
+        openedPositionsThisCycle,
+      };
+    } finally {
+      await unlock();
+    }
+  }
+}
